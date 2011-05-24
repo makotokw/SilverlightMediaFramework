@@ -7,6 +7,55 @@
 	xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
 	mc:Ignorable="d">
 
+    <Style TargetType="player:CoreSmoothStreamingMediaElement">
+        <Setter Property="Background" Value="Black" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="player:CoreSmoothStreamingMediaElement">
+                    <Grid x:Name="RootElement" Background="{TemplateBinding Background}">
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup x:Name="PlaybackModes">
+                                <VisualStateGroup.Transitions>
+                                    <VisualTransition
+                                        GeneratedDuration="0:0:0.5"
+                                        To="ClipPlayback" />
+                                    <VisualTransition
+                                        GeneratedDuration="0:0:0.5"
+                                        To="Normal" />
+                                </VisualStateGroup.Transitions>
+                                <VisualState x:Name="ClipPlayback">
+                                    <Storyboard>
+                                        <DoubleAnimation
+                                            Storyboard.TargetName="MediaElement"
+                                            Storyboard.TargetProperty="Opacity" To="0" />
+                                    </Storyboard>
+                                </VisualState>
+                                <VisualState x:Name="Normal">
+                                    <Storyboard>
+                                        <DoubleAnimation
+                                            Storyboard.TargetName="MediaElement"
+                                            Storyboard.TargetProperty="Opacity" To="1" />
+                                    </Storyboard>
+                                </VisualState>
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+                        <MediaElement 
+                            x:Name="MediaElement"
+                              
+                              AutoPlay="{TemplateBinding AutoPlay}"
+                              
+                              IsMuted="{TemplateBinding IsMuted}"
+                              Source="{TemplateBinding Source}"
+                              Stretch="{TemplateBinding Stretch}"
+                              Tag="{TemplateBinding Tag}"
+                              Volume="{TemplateBinding Volume}">
+                        </MediaElement>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <Style x:Key="RRRepeatButtonStyle" TargetType="RepeatButton">
         <Setter Property="Background" Value="#FF1F3B53"/>
         <Setter Property="Foreground" Value="#FF000000"/>
@@ -1632,7 +1681,7 @@
                             <Button x:Name="ChapterMarkerPreviousElement" Height="20" Width="20" Grid.Column="5" Content="pc" Margin="-1,0,0,0" Style="{StaticResource ChapterBackButtonStyle}" Visibility="Collapsed" d:IsHidden="True"/>
                             <Button x:Name="ChapterMarkerNextElement" Height="20" Width="20" Grid.Column="6" Content="nc" Style="{StaticResource ChapterForwardButtonStyle}" Margin="-1,0,0,0" Visibility="Collapsed" d:IsHidden="True"/>
                             <player:Scrubber x:Name="PositionElement" Margin="8,2,8,2" VerticalAlignment="Center" Grid.Column="7" AvailableVisibility="Visible"/>
-                            <Border x:Name="TimeContainer" Grid.Column="8" BorderBrush="#7F434343" BorderThickness="1" Margin="0">
+                            <Border x:Name="TimeContainerElement" Grid.Column="8" BorderBrush="#7F434343" BorderThickness="1" Margin="0">
                                 <Grid Height="28" MaxHeight="28" MinHeight="28" MinWidth="60" UseLayoutRounding="True">
                                     <Grid>
                                         <Grid.ColumnDefinitions>

@@ -7,7 +7,7 @@ namespace Microsoft.SilverlightMediaFramework.Player
 		public PlayerLogType LogType { get; private set; }
 		public object[] Args { get; private set; }
 
-		internal PlayerLog(PlayerLogType logType, params object[] args)
+		public PlayerLog(PlayerLogType logType, params object[] args)
 			: base()
 		{
 			LogType = logType;
@@ -18,6 +18,7 @@ namespace Microsoft.SilverlightMediaFramework.Player
 	public enum PlayerLogType
 	{
 		AdCompleted,
+        AquireLicenseCompleted,
 		BufferingStatusChanged,
 		DownloadBitrateChange,
 		DownloadProgressChanged,
@@ -28,25 +29,29 @@ namespace Microsoft.SilverlightMediaFramework.Player
 		MarkerReached,
 		MarkersSkipped,
 		MarkerSkippedInto,
+        MediaCurrentStateChanged,
 		MediaDied,
 		MediaEnded,
 		MediaFailed,
 		MediaFailedRetry,
-		MediaOpened,
+		MediaOpened,        
 		MediaRetrySucceeded,
 		MuteClicked,
 		NextChapterClicked,
 		PlayControlClicked,
 		PlayStateChanged,
 		PlayVideo,
+        PositionAvailableChanged,
 		PreviousChapterClicked,
         ReplayClicked,
         RewindClicked,
 		ScrubCompleted,
 		ScrubStarted,
 		SlowMotionClicked,
+        SourceChanged,
 		StatusTick,
 		UnMuteClicked,
+        VideoOutputConnectors,
 		VolumeLevelChanged,
 		SmoothStreamingError,
 		RetryAttempt

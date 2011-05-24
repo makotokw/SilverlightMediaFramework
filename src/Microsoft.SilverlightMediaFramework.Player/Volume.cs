@@ -51,11 +51,10 @@ namespace Microsoft.SilverlightMediaFramework.Player
 			GetTemplateChildren();
 			InitializeTemplateChildren();
 
-
 			if (VolumeLevel == 0)
 			{
 				this.IsMuted = true;
-				this.VolumeLevelBeforeMuted = .5;
+                this.VolumeLevelBeforeMuted = DefaultVolumeLevel;
 			}
 
 			VisualStateManager.GoToState(this, IsMuted ? MutedStates.Muted : MutedStates.VolumeOn, true);
@@ -150,7 +149,8 @@ namespace Microsoft.SilverlightMediaFramework.Player
 			}
 		}
 
-		private bool _bAnimateVolume = true;
+        // Animationの管理が怪しいので正しく動作しない
+		private bool _bAnimateVolume = false;
 		public bool AnimateVolume
 		{
 			get
@@ -298,14 +298,16 @@ namespace Microsoft.SilverlightMediaFramework.Player
 
 		// Dependency Property Events
 
+        private bool isVolumeLevelChanging = false;
 		private static void OnVolumeLevelChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
 		{
 			VolumeControl vc = d as VolumeControl;
 			Debug.Assert(vc != null, "VolumeControl is null");
-			if (vc._slider != null)
-			{
-				if (!vc.isAnimating)
-				{
+            vc.isVolumeLevelChanging = true;
+            if (!vc.isMuteChanging)
+            {
+                if (vc._slider != null)
+			    {
 					if (vc.IsMuted)
 					{
 						// User is interacting w/ slider while Muted.  Turn off IsMuted and set
@@ -319,51 +321,84 @@ namespace Microsoft.SilverlightMediaFramework.Player
 						// user scrubbed to 0.  Need to mock a Muted state.  Set the pre mute level to .5 so they
 						// have somewhere to go if they click "unmute"
 						vc.IsMuted = true;
-						vc.VolumeLevelBeforeMuted = .5;
+                        vc.VolumeLevelBeforeMuted = DefaultVolumeLevel;
 					}
-				}
-				ControlHelper.RaiseEvent(vc.VolumeLevelChanged, vc, e);
-			}
-			else
-			{
-				if (!vc.IsMuted && vc.VolumeLevel == 0)
-				{
-					vc.IsMuted = true;
-					vc.VolumeLevelBeforeMuted = .5;
-				}
-			}
-		}
+				    ControlHelper.RaiseEvent(vc.VolumeLevelChanged, vc, e);
+			    }
+			    else
+			    {
+                    if (vc.VolumeLevel == 0)
+                    {
+                        vc.IsMuted = true;
+                        vc.VolumeLevelBeforeMuted = DefaultVolumeLevel;
+                    }
+                    else
+                    {
+                        vc.VolumeLevelBeforeMuted = -1;
+                        vc.IsMuted = false;
+                    }
+			    }
+            }
+            vc.isVolumeLevelChanging = false;
+        }
 
+
+        private bool isMuteChanging = false;
 		private static void OnIsMutedChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
 		{
 			VolumeControl vc = d as VolumeControl;
 			Debug.Assert(vc != null, "VolumeControl is null");
 
-			if ((bool)e.NewValue)
-			{
-				// preserve current volume
-				vc.VolumeLevelBeforeMuted = vc.VolumeLevel;
+            vc.isMuteChanging = true;
 
-				// Set VolumeLevel to 0 for Muting
-				if (vc.AnimateVolume)
-					vc.DoubleAnimationHelper(vc.VolumeLevel, 0, .1, null, null, vc, "VolumeLevel");
-				else
-					vc.VolumeLevel = 0;
-			}
-			else
-			{
-				if (vc.VolumeLevelBeforeMuted > 0)
-				{
-					// restore previous volume
-					if (vc.AnimateVolume)
-						vc.DoubleAnimationHelper(vc.VolumeLevel, vc.VolumeLevelBeforeMuted, .1, null, null, vc, "VolumeLevel");
-					else
-						vc.VolumeLevel = vc.VolumeLevelBeforeMuted;
-				}
-			}
+            if (!vc.isVolumeLevelChanging)
+            {
+                // Mute
+                if ((bool)e.NewValue)
+                {
+                    // preserve current volume
+                    vc.VolumeLevelBeforeMuted = vc.VolumeLevel;
 
-
+                    // Set VolumeLevel to 0 for Muting
+                    if (vc.VolumeLevel > 0)
+                    {
+                        if (vc.AnimateVolume && !vc.isAnimating)
+                        {
+                            vc.DoubleAnimationHelper(vc.VolumeLevel, 0, .1, null, null, vc, "VolumeLevel");
+                        }
+                        else
+                        {
+                            vc.VolumeLevel = 0;
+                        }
+                    }
+                }
+                // VolumeOn
+                else
+                {
+                    if (vc.VolumeLevelBeforeMuted > 0)
+                    {
+                        // restore previous volume
+                        if (vc.VolumeLevel != vc.VolumeLevelBeforeMuted)
+                        {
+                            if (vc.AnimateVolume && !vc.isAnimating)
+                            {
+                                vc.DoubleAnimationHelper(vc.VolumeLevel, vc.VolumeLevelBeforeMuted, .1, null, null, vc, "VolumeLevel");
+                            }
+                            else
+                            {
+                                vc.VolumeLevel = vc.VolumeLevelBeforeMuted;
+                            }
+                        }
+                    }
+                    if (vc.VolumeLevel == 0)
+                    {
+                        vc.VolumeLevel = DefaultVolumeLevel;
+                    }
+                }
+            }
 			VisualStateManager.GoToState(vc, ((bool)e.NewValue) ? MutedStates.Muted : MutedStates.VolumeOn, true);
+
+            vc.isMuteChanging = false;
 		}
 
 		private static void OnIsExpandedChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)

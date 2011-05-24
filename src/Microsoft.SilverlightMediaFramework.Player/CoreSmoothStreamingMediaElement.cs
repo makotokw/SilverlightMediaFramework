@@ -1,972 +1,660 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Linq;
 using System.Net;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Documents;
+using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
+using System.Windows.Shapes;
+using System.ComponentModel;
 using Microsoft.SilverlightMediaFramework.Logging;
-using Microsoft.Web.Media.SmoothStreaming;
+//using Microsoft.Web.Media.SmoothStreaming;
+using System.IO;
+using System.Windows.Data;
 
 namespace Microsoft.SilverlightMediaFramework.Player
 {
-	// Shim class that the consumer uses instead of SmoothStreamingMediaElement directly.
-	public class CoreSmoothStreamingMediaElement : SmoothStreamingMediaElement
-	{
-		public new event RoutedEventHandler MediaOpened;
-		public new event EventHandler<ExceptionRoutedEventArgs> MediaFailed;
-        public new event RoutedEventHandler MediaEnded;
-		public event RoutedEventHandler Retrying;
-		public event RoutedEventHandler RetrySuccessful;
-		public event RoutedEventHandler CurrentPlaybackStateChanged;
-		public event EventHandler<SimpleEventArgs<bool>> TrickPlayStateChanged;
-		public event RoutedEventHandler MaximumPlaybackBitrateChanged;
-		public event RoutedEventHandler PlaybackBitrateChanged;
-		public static event EventHandler CookiesChanged;
-		public event RoutedEventHandler PlaybackRateChanged;
-		
-		public Dictionary<int, int> MediaElementStateToPlaybackStateMapping;
+    public enum PlaybackState
+    {
+        Closed,
+        Opening,
+        Buffering,
+        Playing,
+        Paused,
+        Stopped,
+        Individualizing,
+        AcquiringLicense,
+        FastForwarding,
+        Rewinding,
+        SlowMotionPlayback,
+        Scrubbing,
+        Seeking
+    }
 
-		// the duration for live and vod modes
-		private TimeSpan estimatedDuration;
+    [TemplatePart(Name = "MediaElement", Type = typeof(MediaElement))]
+    [TemplateVisualState(Name = "ClipPlayback", GroupName = "PlaybackModes")]
+    [TemplatePart(Name = "RootElement", Type = typeof(Panel))]
+    [TemplateVisualState(Name = "Normal", GroupName = "PlaybackModes")]
+    public class CoreSmoothStreamingMediaElement : Control, IDisposable
+    {           
+        public static readonly DependencyProperty AttributesProperty;
+        public static readonly DependencyProperty AudioStreamCountProperty;
+        public static readonly DependencyProperty AudioStreamIndexProperty;
+        public static readonly DependencyProperty AutoPlayProperty;
+        public static readonly DependencyProperty BalanceProperty;
+        public static readonly DependencyProperty BufferingProgressProperty;
+        public static readonly DependencyProperty BufferingTimeProperty;
+        public static readonly DependencyProperty CanPauseProperty;
+        public static readonly DependencyProperty CanSeekProperty;
+        public static readonly DependencyProperty CurrentStateProperty;
+        public static readonly DependencyProperty DownloadProgressOffsetProperty;
+        public static readonly DependencyProperty DownloadProgressProperty;
+        public static readonly DependencyProperty IsMutedProperty;
+        public static readonly DependencyProperty NaturalDurationProperty;
+        public static readonly DependencyProperty NaturalVideoHeightProperty;
+        public static readonly DependencyProperty NaturalVideoWidthProperty;
+        public static readonly DependencyProperty PositionProperty;
+        public static readonly DependencyProperty SourceProperty;
+        public static readonly DependencyProperty StretchProperty;
+        public static readonly DependencyProperty VolumeProperty;
 
-		// flag if consumer of the control called Play before the video was loaded
-		private bool pendingPlay;
+        static CoreSmoothStreamingMediaElement()
+        {
+            AttributesProperty = DependencyProperty.Register("Attributes", typeof(Dictionary<string, string>), typeof(CoreSmoothStreamingMediaElement), new PropertyMetadata(null));
+            AudioStreamCountProperty = DependencyProperty.Register("AudioStreamCount", typeof(int), typeof(CoreSmoothStreamingMediaElement), new PropertyMetadata(0));
+            AudioStreamIndexProperty = DependencyProperty.Register("AudioStreamIndex", typeof(int?), typeof(CoreSmoothStreamingMediaElement), new PropertyMetadata(null));
+            AutoPlayProperty = DependencyProperty.Register("AutoPlay", typeof(bool), typeof(CoreSmoothStreamingMediaElement), new PropertyMetadata(true));
+            BalanceProperty = DependencyProperty.Register("Balance", typeof(double), typeof(CoreSmoothStreamingMediaElement), new PropertyMetadata(0.0));
+            BufferingProgressProperty = DependencyProperty.Register("BufferingProgress", typeof(double), typeof(CoreSmoothStreamingMediaElement), new PropertyMetadata(0.0));
+            BufferingTimeProperty = DependencyProperty.Register("BufferingTime", typeof(TimeSpan), typeof(CoreSmoothStreamingMediaElement), new PropertyMetadata(null));
+            CanPauseProperty = DependencyProperty.Register("CanPause", typeof(bool), typeof(CoreSmoothStreamingMediaElement), new PropertyMetadata(true));
+            CanSeekProperty = DependencyProperty.Register("CanSeek", typeof(bool), typeof(CoreSmoothStreamingMediaElement), new PropertyMetadata(true));
+            CurrentStateProperty = DependencyProperty.Register("CurrentState", typeof(MediaElementState), typeof(CoreSmoothStreamingMediaElement), new PropertyMetadata(MediaElementState.Closed));
+            DownloadProgressProperty = DependencyProperty.Register("DownloadProgress", typeof(double), typeof(CoreSmoothStreamingMediaElement), new PropertyMetadata(0.0));
+            DownloadProgressOffsetProperty = DependencyProperty.Register("DownloadProgressOffset", typeof(double), typeof(CoreSmoothStreamingMediaElement), new PropertyMetadata(0.0));
+            IsMutedProperty = DependencyProperty.Register("IsMuted", typeof(bool), typeof(CoreSmoothStreamingMediaElement), new PropertyMetadata(false));
+            VolumeProperty = DependencyProperty.Register("Volume", typeof(double), typeof(CoreSmoothStreamingMediaElement), new PropertyMetadata(0.5));
+            NaturalDurationProperty = DependencyProperty.Register("NaturalDuration", typeof(Duration), typeof(CoreSmoothStreamingMediaElement), new PropertyMetadata(new Duration()));
+            NaturalVideoWidthProperty = DependencyProperty.Register("NaturalVideoWidth", typeof(int), typeof(CoreSmoothStreamingMediaElement), new PropertyMetadata(0));
+            NaturalVideoHeightProperty = DependencyProperty.Register("NaturalVideoHeight", typeof(int), typeof(CoreSmoothStreamingMediaElement), new PropertyMetadata(0));
+            PositionProperty = DependencyProperty.Register("Position", typeof(TimeSpan), typeof(CoreSmoothStreamingMediaElement), new PropertyMetadata(TimeSpan.Zero));
+            SourceProperty = DependencyProperty.Register("Source", typeof(Uri), typeof(CoreSmoothStreamingMediaElement), new PropertyMetadata(null, new PropertyChangedCallback(CoreSmoothStreamingMediaElement.OnSourcePropertyChanged)));
+            StretchProperty = DependencyProperty.Register("Stretch", typeof(Stretch), typeof(CoreSmoothStreamingMediaElement), new PropertyMetadata(Stretch.Uniform));
+        }
 
-		// stores the command to execute when seek completes,
-		// allocate here (not ctor), to make sure works in Blend
-		private SeekCommand seekCommand = new SeekCommand();
+        protected MediaElementData mediaElementData { get; set; } // UIができるまでの一時データ
+        protected MediaElement mediaElement { get; set; }
+        protected bool pendingPlay { get; set; }
+        protected TimeSpan scrubberStartPosition { get; set; }
+        protected TimeSpan scrubberEndPosition { get; set; }
 
-		// used when setting clip range
-		private TimeSpan scrubberStartPosition;
-		private TimeSpan scrubberEndPosition;
+        //public Dictionary<string, string> _Attributes { get { return this.mediaElement.Attributes; } }
+        public int AudioStreamCount { get { return this.mediaElement.AudioStreamCount; } }
+        public int? AudioStreamIndex { get { return this.mediaElement.AudioStreamIndex; } set { this.mediaElement.AudioStreamIndex = value; } }
 
-		// stores the state of the ssme player, so can be restored
-		private RetryMonitor retryMonitor;
+        [Category("Media"), Description("AutoPlay of the media element.")]
+        public bool AutoPlay
+        {
+            get { return (bool)GetValue(AutoPlayProperty); }
+            set { SetValue(AutoPlayProperty, value); }
+        }
 
-		// stores the max bitrate for the streams
-		private ulong maxSelectedStreamBitrate;
+        // TODO: 
+        public double Balance { get { return this.mediaElement.Balance; } set { this.mediaElement.Balance = value; } }
+        public double BufferingProgress { get { return this.mediaElement.BufferingProgress; } }
+        public TimeSpan BufferingTime { get { return this.mediaElement.BufferingTime; } set { this.mediaElement.BufferingTime = value; } }
 
-		// Used to store the token cookie
-		public static CookieContainer cookies;
+        [Category("Media"), Description("AutoPlay of the media element.")]
+        public bool CanPause
+        {
+            get { return (bool)GetValue(CanPauseProperty); }
+            set { SetValue(CanPauseProperty, value); }
+        }
 
-        private bool isLivePosition;
-		
-		public RetryState RetryState
-		{
-			get
-			{
-				return retryMonitor.RetryState;
-			}
-		}
+        [Category("Media"), Description("AutoPlay of the media element.")]
+        public bool CanSeek
+        {
+            get { return (bool)GetValue(CanSeekProperty); }
+            set { SetValue(CanSeekProperty, value); }
+        }
 
-		public int RetryAttempt
-		{
-			get
-			{
-				return retryMonitor.RetryAttempt;
-			}
-		}
+        [Category("Media"), Description("CurrentState of the media element.")]
+        public MediaElementState CurrentState
+        {
+            get { return (MediaElementState)GetValue(CurrentStateProperty); }
+            internal set
+            {
+                SetValue(CurrentStateProperty, value);
+                if (CurrentStateChanged != null)
+                {
+                    CurrentStateChanged(this, new RoutedEventArgs());
+                }
+            }
+        }
 
-		public bool IsMiniCam
-		{
-			get { return (bool)GetValue(IsMiniCamProperty); }
-			set { SetValue(IsMiniCamProperty, value); }
-		}
-
-		public static readonly DependencyProperty IsMiniCamProperty =
-			DependencyProperty.Register("IsMiniCam", typeof(bool), typeof(CoreSmoothStreamingMediaElement), 
-			new PropertyMetadata(false));
-
-		[Category("Media"), Description("Interval between auto retry attempts.")]
-		public TimeSpan RetryInterval
-		{
-			get { return (TimeSpan)GetValue(RetryIntervalProperty); }
-			set { SetValue(RetryIntervalProperty, value); }
-		}
-
-		public static readonly DependencyProperty RetryIntervalProperty =
-			DependencyProperty.Register("RetryInterval", typeof(TimeSpan),
-			typeof(CoreSmoothStreamingMediaElement),
-			new PropertyMetadata(CoreSmoothStreamingMediaElement.OnRetryIntervalPropertyChanged));
-
-		[Category("Media"), Description("Duration to try auto retries.")]
-		public TimeSpan RetryDuration
-		{
-			get { return (TimeSpan)GetValue(RetryDurationProperty); }
-			set { SetValue(RetryDurationProperty, value); }
-		}
-
-		public static readonly DependencyProperty RetryDurationProperty =
-			DependencyProperty.Register("RetryDuration", typeof(TimeSpan),
-			typeof(CoreSmoothStreamingMediaElement),
-			new PropertyMetadata(CoreSmoothStreamingMediaElement.OnRetryDurationPropertyChanged));
-
-		[Category("Media"), Description("Source of the media element.")]
-		public new Uri Source
-		{
-			get { return (Uri)GetValue(SourceProperty); }
-			set { SetValue(SourceProperty, value); }
-		}
-
-		public static new readonly DependencyProperty SourceProperty =
-			DependencyProperty.Register("Source", typeof(Uri),
-			typeof(CoreSmoothStreamingMediaElement),
-			new PropertyMetadata(CoreSmoothStreamingMediaElement.OnSourcePropertyChanged));
-
-		[Category("Media"), Description("Smooth streaming source of the media element.")]
-		public new Uri SmoothStreamingSource
-		{
-			get { return (Uri)GetValue(SmoothStreamingSourceProperty); }
-			set { SetValue(SmoothStreamingSourceProperty, value); }
-		}
-
-		public static new readonly DependencyProperty SmoothStreamingSourceProperty =
-			DependencyProperty.Register("SmoothStreamingSource", typeof(Uri),
-			typeof(CoreSmoothStreamingMediaElement),
-			new PropertyMetadata(CoreSmoothStreamingMediaElement.OnSmoothStreamingSourcePropertyChanged));
-
-		[Category("Media"), Description("Get last maximum playback bitrate.")]
-		public ulong MaximumPlaybackBitrate
-		{
-			get { return (ulong)GetValue(MaximumPlaybackBitrateProperty); }
-			private set { SetValue(MaximumPlaybackBitrateProperty, value); }
-		}
-
-		public static readonly DependencyProperty MaximumPlaybackBitrateProperty =
-			DependencyProperty.Register("MaximumPlaybackBitrate", typeof(ulong),
-			typeof(CoreSmoothStreamingMediaElement), null);
-
-		[Category("Media"), Description("Get last playback bitrate.")]
-		public ulong PlaybackBitrate
-		{
-			get { return (ulong)GetValue(PlaybackBitrateProperty); }
-			private set { SetValue(PlaybackBitrateProperty, value); }
-		}
-
-		public static readonly DependencyProperty PlaybackBitrateProperty =
-			DependencyProperty.Register("PlaybackBitrate", typeof(ulong),
-			typeof(CoreSmoothStreamingMediaElement), null);
-
-		[Category("Media"), Description("Get last download bitrate.")]
-		public ulong DownloadBitrate
-		{
-			get { return (ulong)GetValue(DownloadBitrateProperty); }
-			private set { SetValue(DownloadBitrateProperty, value); }
-		}
-
-		public static readonly DependencyProperty DownloadBitrateProperty =
-			DependencyProperty.Register("DownloadBitrate", typeof(ulong),
-			typeof(CoreSmoothStreamingMediaElement), null);
-
-		public TimeSpan LivePositionRange
-		{
-			get { return (TimeSpan)GetValue(LivePositionRangeProperty); }
-			set { SetValue(LivePositionRangeProperty, value); }
-		}
-
-		public static readonly DependencyProperty LivePositionRangeProperty =
-			DependencyProperty.Register("LivePositionRange", typeof(TimeSpan), 
-			typeof(CoreSmoothStreamingMediaElement), null);
-
-		// this is only used since the SSME PlaybackRate is not a dependency property,
-		// but we want to bind to the values, create a mirrored value that can be
-		// databound as a workaround
-		public double PlaybackRateDisplay
-		{
-			get { return (double)GetValue(PlaybackRateDisplayProperty); }
-			set { SetValue(PlaybackRateDisplayProperty, value); }
-		}
-
-		public static readonly DependencyProperty PlaybackRateDisplayProperty =
-			DependencyProperty.Register("PlaybackRateDisplay", typeof(double),
-			typeof(CoreSmoothStreamingMediaElement), new PropertyMetadata((double)1.0));
-
-		// TODO: workaround, SSME version 596 is not implementing IsLivePosition, it's 
-		// only set when StartSeekToLive is called, and cleared whenever a seek occurs. 
-		// This workaround return true when playing a live stream and the position is 
-		// within range of LivePosition.
-        public new bool IsLivePosition
+        [Category("Media"), Description("DownloadProgress of the media element.")]
+        public double DownloadProgress
         {
             get
             {
-                if (!IsLive)
+                double downloadProgress = 0.0;
+                if (this.mediaElement != null)
                 {
-                    // always return false for non live streams
-                    return false;
+                    downloadProgress = this.mediaElement.DownloadProgress;
+                }
+                return downloadProgress;
+            }
+        }
+
+        [Category("Media"), Description("DownloadProgressOffset of the media element.")]
+        public double DownloadProgressOffset
+        {
+            get { return (double)base.GetValue(DownloadProgressOffsetProperty); }
+            set { base.SetValue(DownloadProgressOffsetProperty, value); }
+        }
+
+        [Category("Media"), Description("DroppedFramesPerSecond of the media element.")]
+        public double DroppedFramesPerSecond
+        {
+            get
+            {
+                double droppedFramesPerSecond = 0.0;
+                if (this.mediaElement != null)
+                {
+                    droppedFramesPerSecond = this.mediaElement.DroppedFramesPerSecond;
+                }
+                return droppedFramesPerSecond;
+            }
+        }
+
+        [Category("Media"), Description("IsMuted of the media element.")]
+        public bool IsMuted
+        {
+            get { return (bool)GetValue(IsMutedProperty); }
+            set { SetValue(IsMutedProperty, value); }
+        }
+
+        [Category("Media"), Description("Volume of the media element.")]
+        public double Volume
+        {
+            get { return (double)GetValue(VolumeProperty); }
+            set { SetValue(VolumeProperty, value); }
+        }
+
+
+        // shadow since throws exception if use when !mediaElementReady
+        [Category("Media"), Description("Position of the media element.")]
+        public TimeSpan Position
+        {
+            get
+            {
+                if (this.mediaElement != null)
+                {
+                    return mediaElement.Position;
+                }
+                return TimeSpan.Zero;
+            }
+            set
+            {
+
+                // when playing a clip, scrubberEndPosition and scrubberEndPosition are set,
+                // make sure the specified position is within the clip range
+                if (scrubberEndPosition != TimeSpan.Zero && scrubberEndPosition > scrubberStartPosition)
+                {
+                    value = GetPositionInRange(value, scrubberStartPosition, scrubberEndPosition);
+                }
+                else
+                {
+                    // make sure the position is within range of video
+                    value = GetPositionInRange(value, StartPosition, EndPosition);
                 }
 
-                // determine if the position is outside of the live position range,
-                // to prevent frequent changes, check to see if the position is within 
-                // a range and return the current value
-                double lowerRange = LivePosition - (LivePositionRange.TotalSeconds * 1.1);
-                double upperRange = LivePosition - (LivePositionRange.TotalSeconds * 0.9);
-                if (Position.TotalSeconds >= lowerRange && Position.TotalSeconds <= upperRange)
+                if (this.mediaElement != null &&
+                            (this.mediaElement.CurrentState == MediaElementState.Playing ||
+                                this.mediaElement.CurrentState == MediaElementState.Buffering ||
+                                this.mediaElement.CurrentState == MediaElementState.Paused ||
+                                this.mediaElement.CurrentState == MediaElementState.Stopped))
                 {
-                    // the position is within the buffer range, return current value
-                    return isLivePosition;
+                    this.mediaElement.Position = value;
+                    base.SetValue(PositionProperty, value);
                 }
+            }
+        }
 
-                // outside of the buffer range, determine if live position
-                isLivePosition = Position.TotalSeconds > upperRange;
-                return isLivePosition;
+        [Category("Media"), Description("Source of the media element.")]
+        public Uri Source
+        {
+            get { return (Uri)GetValue(SourceProperty); }
+            set { SetValue(SourceProperty, value); }
+        }
+
+        public Stretch Stretch
+        {
+            get { return (Stretch)GetValue(StretchProperty); }
+            set { SetValue(StretchProperty, value); }
+        }
+
+
+        public bool EnableGPUAcceleration { get; set; }
+        public TimeSpan EndPosition { get; protected set; }
+        public TimeSpan EstimatedDuration { get { return this.EndPosition; } }
+
+        public TimelineMarkerCollection Markers { get { return this.mediaElement.Markers; } }
+        public Duration NaturalDuration { get { return this.mediaElement.NaturalDuration; } }
+        public int NaturalVideoHeight { get { return this.mediaElement.NaturalVideoHeight; } }
+        public int NaturalVideoWidth { get { return this.mediaElement.NaturalVideoWidth; } }
+        public double PlaybackRate { get; set; }
+        public double RenderedFramesPerSecond { get { return this.mediaElement.RenderedFramesPerSecond; } }
+        public bool Scrubbing { get; set; }
+        public TimeSpan StartPosition { get; set; }
+        public IList<double> SupportedPlaybackRates { get; protected set; }
+
+        //public long TotalBytesDownloaded { get; protected set; }
+
+        public Dictionary<int, int> MediaElementStateToPlaybackStateMapping;        
+
+        public LicenseAcquirer LicenseAcquirer
+        {
+            get { return (this.mediaElementData != null) ? this.mediaElementData.LicenseAcquirer : this.mediaElement.LicenseAcquirer; }
+            set
+            {
+                if (this.mediaElementData != null)
+                {
+                    this.mediaElementData.LicenseAcquirer = value;
+                }
+                else if (this.mediaElement != null)
+                {
+                    this.mediaElement.LicenseAcquirer = value;
+                }
+            }
+        }
+
+        public event RoutedEventHandler BufferingProgressChanged;
+        public event RoutedEventHandler CurrentStateChanged;
+        public event RoutedEventHandler DownloadProgressChanged;
+        //public event LogReadyRoutedEventHandler LogReady;
+        //public event TimelineMarkerRoutedEventHandler MarkerReached;
+        public event RoutedEventHandler MediaEnded;
+        public event EventHandler<ExceptionRoutedEventArgs> MediaFailed;
+        public event RoutedEventHandler MediaOpened;
+        //public event EventHandler<TimelineEventArgs> TimelineEventReached;
+        //public event RoutedEventHandler Retrying;
+        //public event RoutedEventHandler RetrySuccessful;
+        public event RoutedEventHandler CurrentPlaybackStateChanged;
+        public event RoutedEventHandler PlaybackRateChanged;
+
+        // TODO:  Hopefully we can just remove this whole section if the SSME has the planned states / events.
+        //#region PlaybackState Temp Code
+
+        //public void SetPlaybackRate(double rate)
+        //{
+        //    //    // can only set playback rate if playing a smooth stream video
+        //    //    if (!IsSmoothStream)
+        //    //        return;
+
+        //    //    // make sure setting to a supported rate
+        //    //    if (!SupportedPlaybackRates.Contains(rate))
+        //    //        return;
+
+        //    //    // setting the rate is an async call
+        //    //    BeginSetPlaybackRate(rate);
+        //}
+
+        //// TODO: Remove the property when SSME ships with it (or something similar)
+        //// Adding CurrentPlaybackState to simulate expected property in future code drop.
+        //private PlaybackState currentPlaybackState = PlaybackState.Closed;
+        //public PlaybackState CurrentPlaybackState
+        //{
+        //    get { return currentPlaybackState; }
+        //    set
+        //    {
+        //        currentPlaybackState = value;
+        //        ControlHelper.RaiseEvent(CurrentPlaybackStateChanged, this);
+        //    }
+        //}
+
+        //private void SetCurrentPlaybackStateFromCurrentStateAndPlaybackRate()
+        //{
+        //    // Until MediaElementState & PlaybackState are merged, manually maintain CurrentPlaybackState
+
+        //    double rate = PlaybackRate;
+
+        //    if (CurrentState == MediaElementState.Playing)
+        //    {
+        //        if (rate == 1) // Normal Speed
+        //        {
+        //            CurrentPlaybackState = PlaybackState.Playing;
+        //        }
+        //        else if (rate < 0) // RW
+        //        {
+        //            CurrentPlaybackState = PlaybackState.Rewinding;
+        //        }
+        //        else if (rate > 1) // FF
+        //        {
+        //            CurrentPlaybackState = PlaybackState.FastForwarding;
+        //        }
+        //        else // Slow
+        //        {
+        //            CurrentPlaybackState = PlaybackState.SlowMotionPlayback;
+        //        }
+        //    }
+        //    else if (MediaElementStateToPlaybackStateMapping.ContainsKey((int)CurrentState))
+        //    {
+        //        CurrentPlaybackState = (PlaybackState)MediaElementStateToPlaybackStateMapping[(int)CurrentState];
+        //    }
+        //    else
+        //    {
+        //        CurrentPlaybackState = PlaybackState.Playing;
+        //    }
+        //}
+
+        //#endregion PlaybackState Temp Code
+
+        public CoreSmoothStreamingMediaElement()
+        {
+            DefaultStyleKey = typeof(CoreSmoothStreamingMediaElement);
+
+            this.PlaybackRate = 1.0;
+            this.scrubberStartPosition = TimeSpan.Zero;
+            this.scrubberEndPosition = TimeSpan.Zero;
+            this.StartPosition = TimeSpan.Zero;
+            this.EndPosition = TimeSpan.Zero;
+
+            this.mediaElementData = new MediaElementData();
+
+            if (!DesignerProperties.GetIsInDesignMode(this))
+            {
+                LoadStateMappingDictionary();
             }
         }
 
 
-		public static CookieContainer Cookies
-		{
-			get
-			{
-				if (cookies == null)
-				{
-					cookies = new CookieContainer();
-				}
-				return cookies;
-			}
-			set
-			{
-				cookies = value;
-				OnCookiesChanged(new EventArgs());
-			}
-		}
+        public override void OnApplyTemplate()
+        {
+            base.OnApplyTemplate();
+            if (!DesignerProperties.GetIsInDesignMode(this))
+            {
+                this.InitializeMediaElement(this.GetTemplateChild("MediaElement") as MediaElement);
+            }
+        }
 
-		private static void OnCookiesChanged(EventArgs e)
-		{
-			if (CookiesChanged != null)
-				CookiesChanged(null, e);
-		}
+        void InitializeMediaElement(MediaElement me)
+        {
+            if (this.mediaElement != me)
+            {
+                if (this.mediaElementData != null && me != null)
+                {
+                    var cache = this.mediaElementData;
+                    this.mediaElementData = null;
+                    cache.Dettach(me);
+                }
+                this.mediaElement = me;
 
-		public bool IsSmoothStream
-		{
-			get
-			{
-				return SmoothStreamingSource != null;
-			}
-		}
+                if (this.mediaElement != null)
+                {
+                    this.mediaElement.BufferingProgressChanged += new RoutedEventHandler(mediaElement_BufferingProgressChanged);
+                    this.mediaElement.CurrentStateChanged += new RoutedEventHandler(mediaElement_CurrentStateChanged);
+                    this.mediaElement.DownloadProgressChanged += new RoutedEventHandler(mediaElement_DownloadProgressChanged);
+                    //this.mediaElement.LogReady += new LogReadyRoutedEventHandler(mediaElement_LogReady);
+                    //this.mediaElement.MarkerReached += new TimelineMarkerRoutedEventHandler(mediaElement_MarkerReached);
+                    this.mediaElement.MediaOpened += new RoutedEventHandler(mediaElement_MediaOpened);
+                    this.mediaElement.MediaFailed += new EventHandler<ExceptionRoutedEventArgs>(mediaElement_MediaFailed);
+                    this.mediaElement.MediaEnded += new RoutedEventHandler(mediaElement_MediaEnded);
+                }
+            }
+        }
 
-		// The duration of the video for live and vod streams. The SSME control contains
-		// a Duration property that is EndPosition - StartPosition. Instead of overriding 
-		// the behavior of Duration, create another property that contains the total 
-		// duration for vod and live feeds.
-		public TimeSpan EstimatedDuration
-		{
-			get
-			{
-				// for vod streams, the duration is the EndPosition
-				if (!IsLive)
-				{
-					return EndPosition;
-				}
+        //void mediaElement_MarkerReached(object sender, TimelineMarkerRoutedEventArgs e)
+        //{
+            
+        //}
 
-				// detect if exceeded the duration
-				if (LivePosition > estimatedDuration.TotalSeconds)
-				{
-					// increase the estimated duration by the time represented by the timeline, 
-					// example if StartPosition = 100 seconds, and LivePosition = 300 seconds,
-					// increase the time based on 200 seconds, not 300 seconds
-					double range = LivePosition - StartPosition.TotalSeconds;
+        //void mediaElement_LogReady(object sender, LogReadyRoutedEventArgs e)
+        //{
+            
+        //}
 
-                    //SSME Workaround: LivePosition is being reported inaccurately
-                    //causing an overflow exception to occur in the TimeSpan.FromSeconds
-                    //method.  To prevent this exception from halting the application
-                    //the following try-catch block was added to suppress it.
-                    //Kevin Rohling 11-10-09 1:38PM
-                    try
-                    {
-                        estimatedDuration = TimeSpan.FromSeconds(
-                            LivePosition + (range * LiveDurationExtendPercentage));
-                    }
-                    catch (OverflowException) { }
-				}
+        void mediaElement_BufferingProgressChanged(object sender, RoutedEventArgs e)
+        {
+            if (BufferingProgressChanged != null)
+            {
+                BufferingProgressChanged(this, new RoutedEventArgs());
+            }
+        }
 
-				return estimatedDuration;
-			}
-		}
+        void mediaElement_CurrentStateChanged(object sender, RoutedEventArgs e)
+        {
+            var mediaElement = sender as MediaElement;
+            var currentState = this.CurrentState;
+            if (mediaElement != null && this.CurrentState != mediaElement.CurrentState)
+            {
+                base.SetValue(CurrentStateProperty, mediaElement.CurrentState);
+            }
+            var handler = this.CurrentStateChanged;
+            if ((handler != null) && (currentState != this.CurrentState))
+            {
+                handler(this, new RoutedEventArgs());
+            }
+            //SetCurrentPlaybackStateFromCurrentStateAndPlaybackRate();
+        }
 
-		// if the ssme control is currently seeking
-		public bool IsSeeking
-		{
-			get 
-			{ 
-				return seekCommand.IsSeeking; 
-			}
-		}		
+        void mediaElement_DownloadProgressChanged(object sender, RoutedEventArgs e)
+        {
+            if (DownloadProgressChanged != null)
+            {
+                DownloadProgressChanged(this, new RoutedEventArgs());
+            }
+        }
 
-		// shadow since throws exception if use when !mediaElementReady
-		public new TimeSpan Position
-		{
-			get
-			{
-				return base.Position;
-			}
+        void mediaElement_MediaOpened(object sender, RoutedEventArgs e)
+        {
+            this.StartPosition = TimeSpan.Zero;
+            this.EndPosition = this.mediaElement.NaturalDuration.TimeSpan;
 
-			set
-			{
-				// if currently seeking, store the desired new position
-				// and seek to it when the current seek operation completes
-				if (seekCommand.IsSeeking)
-				{
-					seekCommand.Position = value;
-					return;
-				}
+            // see if consumer called Play after specfiying the source but before the video was loaded
+            if (pendingPlay)
+            {
+                Play();
+                pendingPlay = false;
+            }
 
-				// make sure the specified position is within range, this requires a workaround
-				// since the SSME control does not update LivePosition and EndPosition when in 
-				// PIP mode, LivePosition and EndPosition appear to be set when the video is
-				// loaded but the properties are not updated, the workaround is to not check 
-				// if the position is within range when in PIP mode
-				if (!PipMode)
-				{
-					// when playing a clip, scrubberEndPosition and scrubberEndPosition are set,
-					// make sure the specified position is within the clip range
-					if (scrubberEndPosition != TimeSpan.Zero && scrubberEndPosition > scrubberStartPosition)
-					{
-						value = GetPositionInRange(value, scrubberStartPosition, scrubberEndPosition);
-					}
-					else
-					{
-						// make sure the position is within range of video
-						TimeSpan maxPosition = IsLive ? TimeSpan.FromSeconds(LivePosition) : EndPosition;
-						value = GetPositionInRange(value, StartPosition, maxPosition);
-					}
-				}
-				
-				// workaround, handle case when set position and CurrentState = Paused, 
-				// if set IsSeeking = true a SeekCompleted event is never raised, so the
-				// SSME control will ignore future Position and Play commands
+            if (MediaOpened != null)
+            {
+                MediaOpened(this, e);
+            }
+        }
 
-                //Changed this to only set IsSeeking = true if using SmoothStreaming.  This is
-                //because you will not get a SeekCompleted event when using Progressive Download.
-                //Kevin Rohling 1-13-2010 1:59PM
-                if (CurrentState == SmoothStreamingMediaElementState.Playing && this.SmoothStreamingSource != null)
-				{
-					// set flag that we are seeking, cleared in the SeekCompleted event handler
-					seekCommand.IsSeeking = true;
-				}
-
-				base.Position = value;
-			}
-		}
-
-
-		// TODO:  Hopefully we can just remove this whole section if the SSME has the planned states / events.
-		#region PlaybackState Temp Code
-
-		// the estimated duration of the live video
-		public TimeSpan LiveDuration { get; set; }
-
-		// amount to increase the duration when exceed the live video duration
-		public double LiveDurationExtendPercentage { get; set; }
-
-		public new void SetPlaybackRate(double rate)
-		{
-			// can only set playback rate if playing a smooth stream video
-			if (!IsSmoothStream)
-				return;
-
-			// make sure setting to a supported rate
-			if (!SupportedPlaybackRates.Contains(rate))
-				return;
-
-			// setting the rate is an async call
-			BeginSetPlaybackRate(rate);
-		}
-
-		private void BeginSetPlaybackRate(double rate)
-		{
-			// check if currently seeking, if so, queue the desired rate and it will 
-			// be set after the current seek completes, note that the last-in playback 
-			// rate will be used (if try to set multiple rates while seeking, the last
-			// one will be used)		
-			if (seekCommand.IsSeeking)
-			{
-				seekCommand.PlaybackRate = rate;
-				return;
-			}
-			
-			// not seeking, set the rate, but it's not really set until the seek command completes
-			if (rate != PlaybackRate)
-			{
-				seekCommand.IsSeeking = true;
-				base.SetPlaybackRate(rate);
-			}
-		}
-
-		// TODO: Remove the property when SSME ships with it (or something similar)
-		// Adding CurrentPlaybackState to simulate expected property in future code drop.
-		private PlaybackState currentPlaybackState = PlaybackState.Closed;
-		public PlaybackState CurrentPlaybackState
-		{
-			get
-			{
-				return currentPlaybackState;
-			}
-
-			set
-			{
-				currentPlaybackState = value;
-				ControlHelper.RaiseEvent(CurrentPlaybackStateChanged, this);
-			}
-		}
-
-		private void CoreSmoothStreamingMediaElement_CurrentStateChanged(object sender, RoutedEventArgs e)
-		{
-			SetCurrentPlaybackStateFromCurrentStateAndPlaybackRate();
-		}
-
-		private void SetCurrentPlaybackStateFromCurrentStateAndPlaybackRate()
-		{
-			// Until MediaElementState & PlaybackState are merged, manually maintain CurrentPlaybackState
-
-			double rate = PlaybackRate;
-
-            if (CurrentState == SmoothStreamingMediaElementState.Playing)
-			{
-				if (rate == 1) // Normal Speed
-				{
-					CurrentPlaybackState = PlaybackState.Playing;
-				}
-				else if (rate < 0) // RW
-				{
-					CurrentPlaybackState = PlaybackState.Rewinding;
-				}
-				else if (rate > 1) // FF
-				{
-					CurrentPlaybackState = PlaybackState.FastForwarding;
-				}
-				else // Slow
-				{
-					CurrentPlaybackState = PlaybackState.SlowMotionPlayback;
-				}
-			}
-			else if (MediaElementStateToPlaybackStateMapping.ContainsKey((int)CurrentState))
-			{
-				CurrentPlaybackState = (PlaybackState)MediaElementStateToPlaybackStateMapping[(int)CurrentState];
-			}
-			else
-			{
-				CurrentPlaybackState = PlaybackState.Playing;
-			}
-		}
-
-		#endregion PlaybackState Temp Code
-
-		public CoreSmoothStreamingMediaElement()
-		{
-			if (!DesignerProperties.GetIsInDesignMode(this))
-			{
-				CoreSmoothStreamingMediaElement.CookiesChanged += CoreSmoothStreamingMediaElement_CookiesChanged;
-				base.MediaOpened += CoreSmoothStreamingMediaElement_MediaOpened;
-                base.MediaEnded += CoreSmoothStreamingMediaElement_MediaEnded;
-				PlaybackTrackChanged += CoreSmoothStreamingMediaElement_PlaybackTrackChanged;
-				DownloadTrackChanged += CoreSmoothStreamingMediaElement_DownloadTrackChanged;
-				CurrentStateChanged += CoreSmoothStreamingMediaElement_CurrentStateChanged;
-				SeekCompleted += CoreSmoothStreamingMediaElement_SeekCompleted;
-				base.MediaFailed += CoreSmoothStreamingMediaElement_MediaFailed;
-				SmoothStreamingErrorOccurred += CoreSmoothStreamingMediaElement_SmoothStreamingErrorOccurred;
-
-				// TODO: workaround since not exposing the max playback bitrate
-				Application.Current.Host.Content.FullScreenChanged += Application_FullScreenChanged;
-
-				// retry helper
-				retryMonitor = new RetryMonitor(this);
-				retryMonitor.Retrying += retryMonitor_Retrying;
-				retryMonitor.RetrySuccessful += retryMonitor_RetrySuccessful;
-				retryMonitor.RetryFailed += retryMonitor_RetryFailed;
-				retryMonitor.RetryAttempted += retryMonitor_RetryAttempted;
-				
-				LoadStateMappingDictionary();
-			}
-		}
-
-        private void CoreSmoothStreamingMediaElement_MediaEnded(object sender, RoutedEventArgs e)
+        void mediaElement_MediaEnded(object sender, RoutedEventArgs e)
         {
             if (MediaEnded != null)
             {
-                MediaEnded(sender, e);
+                MediaEnded(this, e);
             }
         }
 
-
-		private void retryMonitor_RetryAttempted(object sender, RoutedEventArgs e)
-		{
-			// log the retry attempt
-			Logger.Log(new PlayerLog(PlayerLogType.RetryAttempt, RetryAttempt) { Sender = this, Message = string.Format("RetryAttempt: {0}", RetryAttempt) });
-		}
-
-		private void retryMonitor_Retrying(object sender, SimpleEventArgs<Exception> e)
-		{
-			// log error
-			if (e != null && e.Result != null && e.Result.Message != null)
-				Logger.Log(new PlayerLog(PlayerLogType.MediaFailedRetry) { Sender = this, Message = string.Format("MediaRetry:{0}", e.Result.Message) });
-			else
-				Logger.Log(new PlayerLog(PlayerLogType.MediaFailedRetry) { Sender = this, Message = string.Format("MediaRetry: (no exception)") });
-
-			// pass to any consumers
-			if (Retrying != null)
-			{
-				Retrying(this, null);
-			}
-		}
-
-		private void retryMonitor_RetrySuccessful(object sender, RoutedEventArgs e)
-		{
-			// log event
-			Logger.Log(new PlayerLog(PlayerLogType.MediaRetrySucceeded) { Sender = this, Message = "MediaRetrySucceeded" });
-		
-			// pass to any consumers
-			if (RetrySuccessful != null)
-			{
-				RetrySuccessful(this, e);
-			}
-		}
-
-		private void retryMonitor_RetryFailed(object sender, ExceptionRoutedEventArgs e)
-		{
-			// log error
-			Logger.Log(new PlayerLog(PlayerLogType.MediaDied) { Sender = this, Message = "MediaDied" });
-			
-			// pass to any consumers, the arg e contains the original MediaFailed arg
-			if (MediaFailed != null)
-			{
-				MediaFailed(this, e);
-			}
-		}
-
-		// retry loading the control with the last known good values,
-		// retries one time, does not perform auto retry
-		public void Retry()
-		{
-			retryMonitor.Retry();
-		}
-
-
-		public void Retry(TimeSpan timeSpan)
-		{
-			retryMonitor.Retry(timeSpan);
-		}
-
-		// stop and reset the auto retry
-		public void ResetAutoRetry()
-		{
-			// TODO: better fix for Blend.
-			if (!DesignerProperties.GetIsInDesignMode(this))
-			{
-				retryMonitor.ResetAutoRetry();
-			}
-		}
-
-		void CoreSmoothStreamingMediaElement_CookiesChanged(object sender, EventArgs e)
-		{
-			if (!IsMiniCam)
-			{
-				base.CookieContainer = CoreSmoothStreamingMediaElement.Cookies;
-			}
-		}
-
-		public override void OnApplyTemplate()
-		{
-			if (!DesignerProperties.GetIsInDesignMode(this))
-			{
-				// the SmoothStreamingMediaElement contains an underlying media 
-				// element, and certain operations cannot be performed until
-				// the media element is initialized
-				if (!IsMiniCam)
-				{
-					base.CookieContainer = CoreSmoothStreamingMediaElement.Cookies;
-				}
-			
-				base.OnApplyTemplate();
-			}
-		}
-
-		private void CoreSmoothStreamingMediaElement_PlaybackTrackChanged(object sender, TrackChangedEventArgs e)
-		{
-			if (e.StreamType == MediaStreamType.Video && PlaybackBitrate != e.Track.Bitrate)
-			{
-				// store value
-				PlaybackBitrate = e.Track.Bitrate;
-				
-				// raise event
-				if (PlaybackBitrateChanged != null)
-				{
-					PlaybackBitrateChanged(this, new RoutedEventArgs());
-				}
-			}
-		}
-
-		private void CoreSmoothStreamingMediaElement_DownloadTrackChanged(object sender, TrackChangedEventArgs e)
-		{
-			if (e.StreamType == MediaStreamType.Video)
-			{
-				// store the current bitrate
-				DownloadBitrate = e.Track.Bitrate;
-			}
-		}
-
-		private void CoreSmoothStreamingMediaElement_MediaOpened(object sender, RoutedEventArgs e)
-		{
-            isLivePosition = false;
-
-			// opened a new stream, clear any existing seek states
-			seekCommand.IsSeeking = false;
-			
-			// initialize the duration to the estimated time specified in the manifest, the
-			// LiveDuration is relative time, so add StartPosition to make it absoulte time
-			if (IsLive)
-			{
-				estimatedDuration = StartPosition + LiveDuration;
-			}
-
-			// see if consumer called Play after specfiying the source but before the video was loaded
-			if (pendingPlay)
-			{
-				Play();
-				pendingPlay = false;
-			}
-
-			if (MediaOpened != null)
-			{
-				MediaOpened(this, e);
-			}
-
-			// get the max bitrate for this stream
-			UpdateSelectedStreamsMaximumBitrate();
-		}
-
-		private void CoreSmoothStreamingMediaElement_SmoothStreamingErrorOccurred(object sender, SmoothStreamingErrorEventArgs e)
-		{
-			// log error
-			string message = String.Format("SmoothStreamingErrorOccurred - code: {0}, source: {1}, message: {2}", 
-				e.ErrorCode, SmoothStreamingSource.AbsoluteUri, e.ErrorMessage);
-			Logger.Log(new PlayerLog(PlayerLogType.SmoothStreamingError) { Sender = this, Message = message });
-		}
-
-		private void CoreSmoothStreamingMediaElement_MediaFailed(object sender, ExceptionRoutedEventArgs e)
-		{
-			Logger.Log(new PlayerLog(PlayerLogType.MediaFailed) { Sender = this, Message = string.Format("MediaFailed: {0}", e.ErrorException.Message) });
-
-			// opened a new stream, clear any existing seek states
-			seekCommand.IsSeeking = false;
-		}
-
-		public override void Play()
-		{
-			// workaround for SSME issue, the SSME can have odd behavior when calling Play 
-			// from the SeekComplete event handle when it's currently in the Playing state
-            if (CurrentState == SmoothStreamingMediaElementState.Playing)
-			{
-				return;
-			}
-				
-			// set flag, in case video has not been loaded yet
-			pendingPlay = true;
-			
-			// the SSME control has a problem if call Play when it's currently 
-			// seeking, set a flag so can call Play when seeking completes
-			if (seekCommand.IsSeeking)
-			{
-				seekCommand.Play = true;
-			}
-			else
-			{
-				// not seeking, go ahead and call Play
-				Logger.Log(new PlayerLog(PlayerLogType.PlayVideo) { Sender = this, Message = "Play" });
-				base.Play();
-			}
-		}
-
-		// update any pending properties
-		private void ApplyProperties()
-		{
-			// update properties that might have been set
-			// before the media-ready event was raised
-			OnSourceChanged();
-			OnSmoothStreamingSourceChanged();
-		}
-
-		private void CoreSmoothStreamingMediaElement_SeekCompleted(object sender, SeekCompletedEventArgs e)
-		{
-			OnSeekCompleted(e.ActualSeekPosition);
-            CheckEndOfVideo();
-		}
-
-        // SSME (and MediaElement) do not raise the MediaEnded event when scrub 
-        // to the end of the video and in paused mode, this checks for this 
-        // situation and manually raises the MediaEnded event
-        private void CheckEndOfVideo()
+        void mediaElement_MediaFailed(object sender, ExceptionRoutedEventArgs e)
         {
-            if (!IsLive && Position == EndPosition && CurrentState == SmoothStreamingMediaElementState.Paused)
+            Logger.Log(new PlayerLog(PlayerLogType.MediaFailed) { Sender = this, Message = string.Format("MediaFailed: {0}", e.ErrorException.Message) });
+
+            if (MediaFailed != null)
             {
-                if (MediaEnded != null)
+                MediaFailed(this, e);
+            }
+        }
+
+        public virtual void Play()
+        {
+            // workaround for SSME issue, the SSME can have odd behavior when calling Play 
+            // from the SeekComplete event handle when it's currently in the Playing state
+            if (CurrentState == MediaElementState.Playing)
+            {
+                return;
+            }
+
+            // set flag, in case video has not been loaded yet
+            pendingPlay = true;
+
+            // not seeking, go ahead and call Play
+            Logger.Log(new PlayerLog(PlayerLogType.PlayVideo) { Sender = this, Message = "Play" });
+            if (this.mediaElement != null)
+            {
+                this.mediaElement.Play();
+            }
+            
+        }
+
+        public virtual void Pause()
+        {
+            if (this.mediaElement != null)
+            {
+                this.mediaElement.Pause();
+            }
+        }
+
+        public void SetSource(Stream stream)
+        {
+            if (this.mediaElementData != null)
+            {
+                this.mediaElementData.Stream = stream;
+            }
+            else if (this.mediaElement != null)
+            {
+                this.mediaElement.SetSource(stream);
+            }
+        }
+
+        public virtual void Stop()
+        {
+            if (this.mediaElement != null)
+            {
+                this.mediaElement.Stop();
+            }
+        }
+
+        protected virtual void UpdateVisualState(bool useTransitions)
+        {
+
+        }
+
+        // update any pending properties
+        private void ApplyProperties()
+        {
+            // update properties that might have been set
+            // before the media-ready event was raised
+            OnSourceChanged();
+        }
+
+        #region dependency property callbacks
+
+        private static void OnSourcePropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            CoreSmoothStreamingMediaElement source = d as CoreSmoothStreamingMediaElement;
+            source.OnSourceChanged();
+        }
+
+        private void OnSourceChanged()
+        {
+            if (Source != null)
+            {
+                // clear flag, set in the Play method
+                pendingPlay = false;
+
+                // reset duration, updated when video is opened
+                this.EndPosition = TimeSpan.Zero;
+
+                // load a progressive download video
+                if (this.mediaElement != null)
                 {
-                    MediaEnded(this, new RoutedEventArgs());
+                    this.mediaElement.Source = this.Source;
+                }
+                else if (this.mediaElementData != null)
+                {
+                    this.mediaElementData.Source = this.Source;
+                }
+            }
+            Logger.Log(new PlayerLog(PlayerLogType.SourceChanged) { Sender = this, Message = string.Format("SourceChanged: {0}", Source) });
+        }
+
+        #endregion
+
+        // can specify the range when playing a clip, this is used when setting the
+        // position to make sure the position is within the clip range, this is a method
+        // instead of properties to make it clear that these are not bindable properties
+        // and are only settable
+        internal void SetScrubberRange(TimeSpan scrubberStartPosition, TimeSpan scrubberEndPosition)
+        {
+            this.scrubberStartPosition = scrubberStartPosition;
+            this.scrubberEndPosition = scrubberEndPosition;
+        }
+
+        private void LoadStateMappingDictionary()
+        {
+            MediaElementStateToPlaybackStateMapping = new System.Collections.Generic.Dictionary<int, int>();
+
+            // PlaybackState is a "superset" of MediaElementState
+            for (int i = 0; i <= (int)MediaElementState.Stopped; i++)
+            {
+                MediaElementState meState = (MediaElementState)i;
+                PlaybackState pbState = (PlaybackState)Enum.Parse(typeof(PlaybackState), meState.ToString(), true);
+                MediaElementStateToPlaybackStateMapping.Add((int)meState, (int)pbState);
+            }
+        }
+
+        // make sure the position is in the range of the min and max positions
+        private TimeSpan GetPositionInRange(TimeSpan position, TimeSpan minPosition, TimeSpan maxPosition)
+        {
+            if (position < minPosition)
+                position = minPosition;
+
+            if (position > maxPosition)
+                position = maxPosition;
+
+            return position;
+        }
+
+        public void Dispose()
+        {
+        }
+
+        protected class MediaElementData
+        {
+            public LicenseAcquirer LicenseAcquirer;
+            public List<TimelineMarker> Markers = new List<TimelineMarker>();
+            public Stream Stream;
+            public Uri Source;
+
+            public void Dettach(MediaElement target)
+            {
+                if (this.LicenseAcquirer != null)
+                {
+                    target.LicenseAcquirer = this.LicenseAcquirer;
+                    this.LicenseAcquirer = null;
+                }
+                if (this.Markers.Count > 0)
+                {
+                    foreach (var marker in this.Markers)
+                    {
+                        target.Markers.Add(marker);
+                    }
+                    this.Markers.Clear();
+                }
+                if (this.Stream != null)
+                {
+                    target.SetSource(this.Stream);
+                    this.Stream = null;
+                }
+                else if (this.Source != null)
+                {
+                    target.Source = this.Source;
                 }
             }
         }
 
+    }
 
-        private void OnSeekCompleted(TimeSpan actualSeekPosition)
-        {
-            // clear flag
-            seekCommand.IsSeeking = false;
+ 
 
-            // see if should play
-            if (seekCommand.Play)
-            {
-                Play();
-                seekCommand.Play = false;
-            }
-
-            // see if should seek to a new position
-            if (seekCommand.Position.HasValue)
-            {
-                Position = seekCommand.Position.Value;
-                seekCommand.Position = null;
-            }
-
-            // see if playback value changed
-            if (PlaybackRate != seekCommand.LastPlaybackRate)
-            {
-                // store last value
-                seekCommand.LastPlaybackRate = PlaybackRate;
-                OnPlaybackRateChanged();
-            }
-
-            // see if there is a pending playback rate
-            if (seekCommand.PlaybackRate.HasValue)
-            {
-                BeginSetPlaybackRate(seekCommand.PlaybackRate.Value);
-                seekCommand.PlaybackRate = null;
-            }
-
-            // see if there is a pending seek to live
-            if (seekCommand.StartSeekToLive)
-            {
-                StartSeekToLive();
-                seekCommand.StartSeekToLive = false;
-            }
-        }
-
-
-		private void OnPlaybackRateChanged()
-		{
-			// from Msft - CurrentPlaybackState is also not implemented yet, so manually set it
-			SetCurrentPlaybackStateFromCurrentStateAndPlaybackRate();
-
-			// from Msft - TODO: remove this when SSME fire proper trick play event
-			if (TrickPlayStateChanged != null)
-				TrickPlayStateChanged(this, new SimpleEventArgs<bool>(PlaybackRate != 1));
-
-			// PlaybackRate should be a dependency property but it is not, this 
-			// is a workaround by mirroring the value to a bindable property
-			PlaybackRateDisplay = PlaybackRate;
-
-			// the SSME control does not have a PlaybackRateChanged event, this is 
-			// another workaround that raises the event when the property changes
-			ControlHelper.RaiseEvent(PlaybackRateChanged, this);
-		}
-
-		private void Application_FullScreenChanged(object sender, EventArgs e)
-		{
-			// use a different max bitrate when in fullscreen or not
-			UpdateMaximumPlaybackBitrate();
-		}
-
-		// get the max bitrate for the selected streams
-		private void UpdateSelectedStreamsMaximumBitrate()
-		{
-			maxSelectedStreamBitrate = 0;
-
-			// get video stream
-            var streamResult = (from stream in SelectedStreams ?? Enumerable.Empty<StreamInfo>()
-								where stream.Name == "video"
-								select stream).SingleOrDefault();
-
-			if (streamResult != null)
-			{
-				// get the max TrackInfo.Bitrate
-				maxSelectedStreamBitrate = (from track 
-					in streamResult.SelectedTracks
-					select track.Bitrate).Max();
-			}
-			
-			UpdateMaximumPlaybackBitrate();
-		}
-
-		private void UpdateMaximumPlaybackBitrate()
-		{
-		    ulong maxBitrate = maxSelectedStreamBitrate;
-            //Commenting out this block because it is causing the assigned MaxBitrate to
-            //be ignored - Kevin Rohling 11/17/09 10:41 AM
-            //// TODO: workaround since the SSME does not expose the max bitrate possible, 
-            //// which is not the same as the max bitrate for the selected streams, so use
-            //// a hard coded value for now until it's exposed from the SSME control
-            //ulong maxBitrate = Application.Current.Host.Content.IsFullScreen ?
-            //    maxSelectedStreamBitrate : 1500000;
-
-			if (MaximumPlaybackBitrate != maxBitrate)
-			{
-				// store new value
-				MaximumPlaybackBitrate = maxBitrate;
-
-				// raise changed event
-				if (MaximumPlaybackBitrateChanged != null)
-				{
-					MaximumPlaybackBitrateChanged(this, new RoutedEventArgs());
-				}
-			}
-		}
-
-		#region dependency property callbacks
-
-		private static void OnRetryIntervalPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
-		{
-			CoreSmoothStreamingMediaElement source = d as CoreSmoothStreamingMediaElement;
-			source.OnRetryIntervalChanged();
-		}
-
-		private void OnRetryIntervalChanged()
-		{
-			if (retryMonitor != null)
-			{
-				retryMonitor.RetryInterval = RetryInterval;
-			}
-		}
-
-		private static void OnRetryDurationPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
-		{
-			CoreSmoothStreamingMediaElement source = d as CoreSmoothStreamingMediaElement;
-			source.OnRetryDurationChanged();
-		}
-
-		private void OnRetryDurationChanged()
-		{
-			if (retryMonitor != null)
-			{
-				retryMonitor.RetryDuration = RetryDuration;
-			}
-		}
-
-		private static void OnSourcePropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
-		{
-			CoreSmoothStreamingMediaElement source = d as CoreSmoothStreamingMediaElement;
-			source.OnSourceChanged();
-		}
-
-		private static void OnSmoothStreamingSourcePropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
-		{
-			CoreSmoothStreamingMediaElement source = d as CoreSmoothStreamingMediaElement;
-			source.OnSmoothStreamingSourceChanged();
-		}
-
-		private void OnSourceChanged()
-		{
-			if (Source != null)
-			{
-				// clear flag, set in the Play method
-				pendingPlay = false;
-
-				// reset duration, updated when video is opened
-				estimatedDuration = TimeSpan.Zero;
-
-				// load a progressive download video
-				base.Source = this.Source;
-			}
-		}
-
-        private void OnSmoothStreamingSourceChanged()
-        {
-            // cancel any pending auto retries, for a previous failed video stream
-            ResetAutoRetry();
-            SetSmoothStreamingVideo(this.SmoothStreamingSource);
-        } 
-
-		// set the base class SmoothStreamingSource
-		internal void SetSmoothStreamingVideo(Uri streamSource)
-		{
-			// clear flag, set in the Play method
-			pendingPlay = false;
-
-			// reset duration, updated when video is opened
-			estimatedDuration = TimeSpan.Zero;
-
-			// reset max bitrate
-			maxSelectedStreamBitrate = 0;
-			UpdateMaximumPlaybackBitrate();
-
-            // reset playback rate display
-            PlaybackRateDisplay = 1.0;
-
-			// load smooth streaming video
-			base.SmoothStreamingSource = streamSource;
-		}
-
-		#endregion
-
-		// can specify the range when playing a clip, this is used when setting the
-		// position to make sure the position is within the clip range, this is a method
-		// instead of properties to make it clear that these are not bindable properties
-		// and are only settable
-		internal void SetScrubberRange(TimeSpan scrubberStartPosition, TimeSpan scrubberEndPosition)
-		{
-			this.scrubberStartPosition = scrubberStartPosition;
-			this.scrubberEndPosition = scrubberEndPosition;
-		}
-
-		private void LoadStateMappingDictionary()
-		{
-			MediaElementStateToPlaybackStateMapping = new System.Collections.Generic.Dictionary<int, int>();
-
-			// PlaybackState is a "superset" of MediaElementState
-			for (int i = 0; i <= (int)MediaElementState.Stopped; i++)
-			{
-				MediaElementState meState = (MediaElementState)i;
-				PlaybackState pbState = (PlaybackState)Enum.Parse(typeof(PlaybackState), meState.ToString(), true);
-				MediaElementStateToPlaybackStateMapping.Add((int)meState, (int)pbState);
-			}
-		}
-
-		// make sure the position is in the range of the min and max positions
-		private TimeSpan GetPositionInRange(TimeSpan position, TimeSpan minPosition, TimeSpan maxPosition)
-		{
-			if (position < minPosition)
-				position = minPosition;
-
-			if (position > maxPosition)
-				position = maxPosition;
-
-			return position;
-		}
-
-		/*
-		 * Code to test Retry Slates in debug view *
-		public void Test_SetRetryState(RetryState state)
-		{
-			retryMonitor.RetryState = state;
-			switch (state)
-			{
-				case RetryState.None: RetrySuccessful(this, null); break;
-				case RetryState.Retrying: Retrying(this, null); break;
-				case RetryState.RetriesFailed: MediaFailed(this, null); break;
-			}
-		}
-		*/
-
-        // override, don't execute if currently seeking
-        public new bool StartSeekToLive()
-        {
-            if (seekCommand.IsSeeking)
-            {
-                seekCommand.StartSeekToLive = true;
-                return false;
-            }
-
-            seekCommand.IsSeeking = true;
-            return base.StartSeekToLive();
-        }
-
-
-	}
 }

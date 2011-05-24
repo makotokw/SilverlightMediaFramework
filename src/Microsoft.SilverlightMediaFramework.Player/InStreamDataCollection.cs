@@ -44,12 +44,12 @@ namespace Microsoft.SilverlightMediaFramework.Player
                     if (mediaElement != null)
                     {
                         mediaElement.MediaOpened -= MediaElement_MediaOpened;
-                        mediaElement.TimelineEventReached -= MediaElement_TimelineEventReached;
+                        //mediaElement.TimelineEventReached -= MediaElement_TimelineEventReached;
                     }
 
                     mediaElement = value;
                     mediaElement.MediaOpened += MediaElement_MediaOpened;
-                    mediaElement.TimelineEventReached += MediaElement_TimelineEventReached;
+                    //mediaElement.TimelineEventReached += MediaElement_TimelineEventReached;
                 }
             }
         }
@@ -63,26 +63,26 @@ namespace Microsoft.SilverlightMediaFramework.Player
 
 		private void MediaElement_MediaOpened(object sender, RoutedEventArgs e)
 		{
-			foreach (StreamInfo data in mediaElement.AvailableStreams)
-			{
-				Logger.Log(new DebugLog() { Sender = sender, Message = String.Format(CultureInfo.InvariantCulture, "Preload in-stream track found Name:={0}, Data:={1}", data.Name, data.Type) });
+            //foreach (StreamInfo data in mediaElement.AvailableStreams)
+            //{
+            //    Logger.Log(new DebugLog() { Sender = sender, Message = String.Format(CultureInfo.InvariantCulture, "Preload in-stream track found Name:={0}, Data:={1}", data.Name, data.Type) });
 
-				if (data.IsSparseStream)
-				{
-					TrackInfo track = data.AvailableTracks.FirstOrDefault();
-                    if (track != null && track.TrackData != null && ShouldProcessDataStream(track))
-					{
-						Logger.Log(new DebugLog() { Sender = sender, Message = String.Format(CultureInfo.InvariantCulture, "Preload in-stream data reveived with {0} strings", track.TrackData.Count) });
+            //    if (data.IsSparseStream)
+            //    {
+            //        TrackInfo track = data.AvailableTracks.FirstOrDefault();
+            //        if (track != null && track.TrackData != null && ShouldProcessDataStream(track))
+            //        {
+            //            Logger.Log(new DebugLog() { Sender = sender, Message = String.Format(CultureInfo.InvariantCulture, "Preload in-stream data reveived with {0} strings", track.TrackData.Count) });
 
-						foreach (TimelineEvent dataEvent in track.TrackData)
-						{
-							string dataString = Encoding.UTF8.GetString(dataEvent.EventData, 0, dataEvent.EventData.Length);
-							Logger.Log(new DebugLog() { Sender = sender, Message = String.Format(CultureInfo.InvariantCulture, "Preload in-stream data: {0}", dataString) });
-							AddElement(dataString);
-						}
-					}
-				}
-			}
+            //            foreach (TimelineEvent dataEvent in track.TrackData)
+            //            {
+            //                string dataString = Encoding.UTF8.GetString(dataEvent.EventData, 0, dataEvent.EventData.Length);
+            //                Logger.Log(new DebugLog() { Sender = sender, Message = String.Format(CultureInfo.InvariantCulture, "Preload in-stream data: {0}", dataString) });
+            //                AddElement(dataString);
+            //            }
+            //        }
+            //    }
+            //}
 		}
 
 		private void MediaElement_TimelineEventReached(object sender, TimelineEventArgs e)
@@ -219,7 +219,7 @@ namespace Microsoft.SilverlightMediaFramework.Player
 		public void Dispose()
 		{
             mediaElement.MediaOpened -= MediaElement_MediaOpened;
-            mediaElement.TimelineEventReached -= MediaElement_TimelineEventReached;
+            //mediaElement.TimelineEventReached -= MediaElement_TimelineEventReached;
 		}
 
 		#endregion

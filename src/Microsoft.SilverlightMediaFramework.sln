@@ -1,12 +1,7 @@
 ﻿
-Microsoft Visual Studio Solution File, Format Version 10.00
-# Visual Studio 2008
+Microsoft Visual Studio Solution File, Format Version 11.00
+# Visual Studio 2010
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Microsoft.SilverlightMediaFramework", "Microsoft.SilverlightMediaFramework\Microsoft.SilverlightMediaFramework.csproj", "{37BDB8B1-D3B8-4729-B638-1A3D3E42A563}"
-EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Lib", "Lib", "{21727F7F-6AB1-4980-8165-162100A3DC4C}"
-	ProjectSection(SolutionItems) = preProject
-		Lib\Microsoft.Web.Media.SmoothStreaming.dll = Lib\Microsoft.Web.Media.SmoothStreaming.dll
-	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Microsoft.SilverlightMediaFramework.Data", "Microsoft.SilverlightMediaFramework.Data\Microsoft.SilverlightMediaFramework.Data.csproj", "{EDE2C6A9-6E7D-467C-9D52-35A46C88B95C}"
 EndProject
@@ -17,6 +12,9 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Microsoft.SilverlightMediaFramework.Test", "Microsoft.SilverlightMediaFramework.Test\Microsoft.SilverlightMediaFramework.Test.csproj", "{C9A358C7-B612-477B-8C1C-6189AE4C2C28}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Microsoft.SilverlightMediaFramework.Test.Web", "Microsoft.SilverlightMediaFramework.Test.Web\Microsoft.SilverlightMediaFramework.Test.Web.csproj", "{CD9C5ED1-E07C-420C-9FFB-BB8F981FB03D}"
+	ProjectSection(ProjectDependencies) = postProject
+		{C9A358C7-B612-477B-8C1C-6189AE4C2C28} = {C9A358C7-B612-477B-8C1C-6189AE4C2C28}
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

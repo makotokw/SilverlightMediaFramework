@@ -843,20 +843,10 @@
 		</Style>
 	</UserControl.Resources>
     <Grid x:Name="LayoutRoot">
-        <Grid.RowDefinitions>
-            <RowDefinition/>
-            <RowDefinition/>
-        </Grid.RowDefinitions>
-        <p:Player x:Name="playerSmooth" Grid.Row="0" Style="{StaticResource PlayerStyle1}">
+        <p:Player Style="{StaticResource PlayerStyle1}">
             <p:CoreSmoothStreamingMediaElement
 				AutoPlay="True"
-				SmoothStreamingSource="http://video3.smoothhd.com.edgesuite.net/ondemand/Big%20Buck%20Bunny%20Adaptive.ism/Manifest"
-			/>
-        </p:Player>
-        <p:Player Grid.Row="1" Style="{StaticResource PlayerStyle1}">
-            <p:CoreSmoothStreamingMediaElement
-				AutoPlay="True"
-				Source="http://smf.vertigo.com/CustomMarkers.wmv"
+				Source="http://smf.vertigo.com/videos/wildlife.wmv"
 			/>
         </p:Player>
     </Grid>

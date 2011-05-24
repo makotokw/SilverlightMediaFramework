@@ -12,8 +12,8 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using System.Xml.Linq;
 using Microsoft.SilverlightMediaFramework.Logging;
-using Microsoft.Web.Media.Diagnostics;
-using Microsoft.Web.Media.SmoothStreaming;
+//using Microsoft.Web.Media.Diagnostics;
+//using Microsoft.Web.Media.SmoothStreaming;
 
 namespace Microsoft.SilverlightMediaFramework.Player
 {
@@ -61,19 +61,6 @@ namespace Microsoft.SilverlightMediaFramework.Player
         // the SSME has an internal limit where the the playback rate cannot be negative
         static private TimeSpan RewindLimit = TimeSpan.FromSeconds(30);
 
-        // flag, if the SSME can rewind the current position
-        private bool CanRewind
-        {
-            get
-            {
-                if (mediaElement == null)
-                    return false;
-
-                return (mediaElement.Position > RewindLimit);
-            }
-        }
-
-
         // timer, used to update position text, scrubber
         private DispatcherTimer statusTimer;
         // timer, used to poll for markers
@@ -85,21 +72,26 @@ namespace Microsoft.SilverlightMediaFramework.Player
         // current live mode state
         private LiveModeState liveMode;
 
+        // progressive download mode
+        protected bool isProgressive = false;
+
         // trick FF / RW work around
         protected PlayState previousPlayState = PlayState.Stopped;
-        private double previousVolumeLevel = VolumeControl.DefaultVolumeLevel;
-        private bool isTrickFastForwardMode = false;
-        private bool isTrickRewindMode = false;
+        protected double previousVolumeLevel = VolumeControl.DefaultVolumeLevel;
+        //private bool isTrickFastForwardMode = false;
+        //private bool isTrickRewindMode = false;
 
         // template controls
         protected CoreSmoothStreamingMediaElement mediaElement;
         protected ContentPresenter mediaPresenterElement;
+        protected Grid controllerContainerElement;
         //Commented out playSpeedElement because the RotaryControl
         //will not be publicly available for the upcoming PDC release of the SMF.
         //Kevin Rohling 11-10-2009 12:12PM
         //private RotaryControl playSpeedElement;
         protected PlayControl playElement;
         protected ToggleButton fullScreenElement;
+        protected Border timeContainerElement;
         protected TextBlock currentTimeElement;
         protected TextBlock totalTimeElement;
         protected Scrubber positionElement;
@@ -114,18 +106,20 @@ namespace Microsoft.SilverlightMediaFramework.Player
         protected CountdownTimeline countdownElement;
         protected ToggleButton liveElement;
         protected Button replayElement;
-        private InStreamDataCollection inStreamData;
+        //private InStreamDataCollection inStreamData;
 
         private bool ignoreLiveElementClick;
-        private bool ignoreSlowMotionClick;
+        //private bool ignoreSlowMotionClick;
 
         // template part names
         private static class ElementName
         {
+            public const string ControllerContainer = "ControllerContainer";
             public const string MediaPresenterElement = "MediaPresenterElement";
             public const string PlaySpeedElement = "PlaySpeedElement";
             public const string PlayElement = "PlayElement";
             public const string FullScreenElement = "FullScreenElement";
+            public const string TimeContainerElement = "TimeContainerElement";
             public const string CurrentTimeElement = "CurrentTimeElement";
             public const string TotalTimeElement = "TotalTimeElement";
             public const string PositionElement = "PositionElement";
@@ -142,7 +136,7 @@ namespace Microsoft.SilverlightMediaFramework.Player
             public const string CountdownElement = "CountdownElement";
         }
 
-        private enum LiveModeState
+        public enum LiveModeState
         {
             None,		// media element does not exists
             VOD,		// playing a VOD video
@@ -161,7 +155,9 @@ namespace Microsoft.SilverlightMediaFramework.Player
         public event RoutedEventHandler PlayControlClicked;
 
         //Added JumpedToLive event Kevin Rohling 11-10-2009
-        public event RoutedEventHandler JumpedToLive;
+        //public event RoutedEventHandler JumpedToLive;
+        public event RoutedEventHandler MediaOpened;
+        public event RoutedEventHandler MediaEnded;
         public event RoutedEventHandler MediaFailed;
 
         public event RoutedEventHandler FullScreenClicked;
@@ -171,8 +167,20 @@ namespace Microsoft.SilverlightMediaFramework.Player
         public event RoutedEventHandler PreviousChapterClicked;
         public event RoutedEventHandler NextChapterClicked;
 
+        // flag, if the SSME can rewind the current position
+        public bool CanRewind
+        {
+            get
+            {
+                if (mediaElement == null)
+                    return false;
+
+                return (mediaElement.Position > RewindLimit);
+            }
+        }
+
         // determine if should use scrubber position overrides
-        private bool IsOverrideScrubberRange
+        public bool IsOverrideScrubberRange
         {
             get
             {
@@ -181,25 +189,25 @@ namespace Microsoft.SilverlightMediaFramework.Player
             }
         }
 
-        private LiveModeState LiveMode
+        public LiveModeState LiveMode
         {
             get
             {
                 return liveMode;
             }
 
-            set
+            protected set
             {
                 if (liveMode != value)
                 {
                     liveMode = value;
 
                     // make sure playing back at 1x speed if in live-mode					
-                    if (liveMode == LiveModeState.Live)
-                    {
-                        if (mediaElement != null)
-                            mediaElement.SetPlaybackRate(1.0);
-                    }
+                    //if (liveMode == LiveModeState.Live)
+                    //{
+                    //    if (mediaElement != null)
+                    //        mediaElement.SetPlaybackRate(1.0);
+                    //}
 
                     // update the visual state
                     VisualStateManager.GoToState(this, liveMode.ToString(), true);
@@ -217,7 +225,8 @@ namespace Microsoft.SilverlightMediaFramework.Player
                     if (positionElement != null && liveMode == LiveModeState.VOD)
                     {
                         positionElement.Available = 0;
-                        positionElement.AvailableVisibility = Visibility.Collapsed;
+                        //positionElement.AvailableVisibility = Visibility.Collapsed;
+                        positionElement.AvailableVisibility = System.Windows.Visibility.Visible;
                     }
 
                     // show the available bar when in live mode
@@ -235,22 +244,22 @@ namespace Microsoft.SilverlightMediaFramework.Player
             }
         }
 
-        public InStreamDataCollection InStreamData
-        {
-            get
-            {
-                if (inStreamData == null)
-                {
-                    inStreamData = new InStreamDataCollection();
-                }
+        //public InStreamDataCollection InStreamData
+        //{
+        //    get
+        //    {
+        //        if (inStreamData == null)
+        //        {
+        //            inStreamData = new InStreamDataCollection();
+        //        }
 
-                return inStreamData;
-            }
-            private set
-            {
-                inStreamData = value;
-            }
-        }
+        //        return inStreamData;
+        //    }
+        //    private set
+        //    {
+        //        inStreamData = value;
+        //    }
+        //}
 
         [Category("Media"), Description("Media element.")]
         public CoreSmoothStreamingMediaElement MediaElement
@@ -307,17 +316,17 @@ namespace Microsoft.SilverlightMediaFramework.Player
             DependencyProperty.Register("IsAdPlaying", typeof(bool), typeof(Player),
             new PropertyMetadata(false, Player.OnIsAdPlayingPropertyChanged));
 
-        [Category("Media"), Description("The estimated duration of the live video.")]
-        public TimeSpan LiveDuration
-        {
-            get { return (TimeSpan)GetValue(LiveDurationProperty); }
-            set { SetValue(LiveDurationProperty, value); }
-        }
+        //[Category("Media"), Description("The estimated duration of the live video.")]
+        //public TimeSpan LiveDuration
+        //{
+        //    get { return (TimeSpan)GetValue(LiveDurationProperty); }
+        //    set { SetValue(LiveDurationProperty, value); }
+        //}
 
-        // TODO: get from setting, change default back to 0
-        public static readonly DependencyProperty LiveDurationProperty =
-            DependencyProperty.Register("LiveDuration", typeof(TimeSpan), typeof(Player),
-            new PropertyMetadata(TimeSpan.Zero, Player.OnLiveDurationPropertyChanged));
+        //// TODO: get from setting, change default back to 0
+        //public static readonly DependencyProperty LiveDurationProperty =
+        //    DependencyProperty.Register("LiveDuration", typeof(TimeSpan), typeof(Player),
+        //    new PropertyMetadata(TimeSpan.Zero, Player.OnLiveDurationPropertyChanged));
 
         [Category("Media"), Description("Override the starting position of the scrubber.")]
         public TimeSpan ScrubberStartPosition
@@ -377,27 +386,27 @@ namespace Microsoft.SilverlightMediaFramework.Player
             DependencyProperty.Register("ScrubberEndPosition", typeof(TimeSpan), typeof(Player),
             new PropertyMetadata(TimeSpan.Zero, Player.OnScrubberRangeOverridePropertyChanged));
 
-        [Category("Media"), Description("If the player will display in VOD mode all of the time.")]
-        public bool AlwaysDisplayVOD
-        {
-            get { return (bool)GetValue(AlwaysDisplayVODProperty); }
-            set { SetValue(AlwaysDisplayVODProperty, value); }
-        }
+        //[Category("Media"), Description("If the player will display in VOD mode all of the time.")]
+        //public bool AlwaysDisplayVOD
+        //{
+        //    get { return (bool)GetValue(AlwaysDisplayVODProperty); }
+        //    set { SetValue(AlwaysDisplayVODProperty, value); }
+        //}
 
-        public static readonly DependencyProperty AlwaysDisplayVODProperty =
-            DependencyProperty.Register("AlwaysDisplayVOD", typeof(bool), typeof(Player),
-            new PropertyMetadata(false, Player.OnAlwaysDisplayVODPropertyChanged));
+        //public static readonly DependencyProperty AlwaysDisplayVODProperty =
+        //    DependencyProperty.Register("AlwaysDisplayVOD", typeof(bool), typeof(Player),
+        //    new PropertyMetadata(false, Player.OnAlwaysDisplayVODPropertyChanged));
 
-        [Category("Media"), Description("The amount to increase the duration when the live duration is exceeded.")]
-        public double LiveDurationExtendPercentage
-        {
-            get { return (double)GetValue(LiveDurationExtendPercentageProperty); }
-            set { SetValue(LiveDurationExtendPercentageProperty, value); }
-        }
+        //[Category("Media"), Description("The amount to increase the duration when the live duration is exceeded.")]
+        //public double LiveDurationExtendPercentage
+        //{
+        //    get { return (double)GetValue(LiveDurationExtendPercentageProperty); }
+        //    set { SetValue(LiveDurationExtendPercentageProperty, value); }
+        //}
 
-        public static readonly DependencyProperty LiveDurationExtendPercentageProperty =
-            DependencyProperty.Register("LiveDurationExtendPercentage", typeof(double), typeof(Player),
-            new PropertyMetadata(0.15, Player.OnLiveDurationExtendPercentagePropertyChanged));
+        //public static readonly DependencyProperty LiveDurationExtendPercentageProperty =
+        //    DependencyProperty.Register("LiveDurationExtendPercentage", typeof(double), typeof(Player),
+        //    new PropertyMetadata(0.15, Player.OnLiveDurationExtendPercentagePropertyChanged));
 
         [Category("Media"), Description("The amount of seconds when click replay.")]
         public double ReplaySeconds
@@ -411,16 +420,16 @@ namespace Microsoft.SilverlightMediaFramework.Player
             new PropertyMetadata((double)5));
 
 
-        [Category("Media"), Description("The bitrate that is high definition.")]
-        public ulong HighDefinitionBitrate
-        {
-            get { return (ulong)GetValue(HighDefinitionBitrateProperty); }
-            set { SetValue(HighDefinitionBitrateProperty, value); }
-        }
+        //[Category("Media"), Description("The bitrate that is high definition.")]
+        //public ulong HighDefinitionBitrate
+        //{
+        //    get { return (ulong)GetValue(HighDefinitionBitrateProperty); }
+        //    set { SetValue(HighDefinitionBitrateProperty, value); }
+        //}
 
-        public static readonly DependencyProperty HighDefinitionBitrateProperty =
-            DependencyProperty.Register("HighDefinitionBitrate", typeof(ulong), typeof(Player),
-            new PropertyMetadata((ulong)3450000, Player.OnHighDefinitionBitratePropertyChanged));
+        //public static readonly DependencyProperty HighDefinitionBitrateProperty =
+        //    DependencyProperty.Register("HighDefinitionBitrate", typeof(ulong), typeof(Player),
+        //    new PropertyMetadata((ulong)3450000, Player.OnHighDefinitionBitratePropertyChanged));
 
         [Category("Media"), Description("The amount of seconds when click fastforward.")]
         public double FastForwardJumpSeconds
@@ -475,16 +484,16 @@ namespace Microsoft.SilverlightMediaFramework.Player
             DependencyProperty.Register("CanPlayAds", typeof(bool), typeof(Player),
             new PropertyMetadata(true));
 
-        [Category("Media"), Description("If should process all data streams.")]
-        public bool UseAllDataStreams
-        {
-            get { return (bool)GetValue(UseAllDataStreamsProperty); }
-            set { SetValue(UseAllDataStreamsProperty, value); }
-        }
+        //[Category("Media"), Description("If should process all data streams.")]
+        //public bool UseAllDataStreams
+        //{
+        //    get { return (bool)GetValue(UseAllDataStreamsProperty); }
+        //    set { SetValue(UseAllDataStreamsProperty, value); }
+        //}
 
-        public static readonly DependencyProperty UseAllDataStreamsProperty =
-          DependencyProperty.Register("UseAllDataStreams", typeof(bool), typeof(Player),
-          new PropertyMetadata(true, Player.OnUseAllDataStreamsPropertyChanged));
+        //public static readonly DependencyProperty UseAllDataStreamsProperty =
+        //  DependencyProperty.Register("UseAllDataStreams", typeof(bool), typeof(Player),
+        //  new PropertyMetadata(true, Player.OnUseAllDataStreamsPropertyChanged));
 
 
         public Player()
@@ -543,8 +552,8 @@ namespace Microsoft.SilverlightMediaFramework.Player
             InitializeMediaElement();
 
             OnMarkerDataChanged();
-            OnHighDefinitionBitrateChanged();
-            OnUseAllDataStreamsChanged();
+            //OnHighDefinitionBitrateChanged();
+            //OnUseAllDataStreamsChanged();
 
             InitializeControls();
 
@@ -552,26 +561,27 @@ namespace Microsoft.SilverlightMediaFramework.Player
 
             // check if specified SSME logging, note the SSME will 
             // not enable logging if call this from the constructor
-            CheckToEnableLogging();
+            //CheckToEnableLogging();
 
         }
 
-        private void OnUseAllDataStreamsChanged()
-        {
-            InStreamData.UseAllDataStreams = UseAllDataStreams;
-        }
+        //private void OnUseAllDataStreamsChanged()
+        //{
+        //    InStreamData.UseAllDataStreams = UseAllDataStreams;
+        //}
 
-        private static void OnUseAllDataStreamsPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
-        {
-            Player source = d as Player;
-            source.OnUseAllDataStreamsChanged();
-        }
+        //private static void OnUseAllDataStreamsPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        //{
+        //    Player source = d as Player;
+        //    source.OnUseAllDataStreamsChanged();
+        //}
 
 
         // wireup template elements
         private void GetTemplateChildren()
         {
             mediaPresenterElement = GetTemplateChild(ElementName.MediaPresenterElement) as ContentPresenter;
+            controllerContainerElement = GetTemplateChild(ElementName.ControllerContainer) as Grid;
             //Commented out playSpeedElement because the RotaryControl
             //will not be publicly available for the upcoming PDC release of the SMF.
             //Kevin Rohling 11-10-2009 12:12PM
@@ -580,6 +590,7 @@ namespace Microsoft.SilverlightMediaFramework.Player
             fullScreenElement = GetTemplateChild(ElementName.FullScreenElement) as ToggleButton;
             positionElement = GetTemplateChild(ElementName.PositionElement) as Scrubber;
             volumeElement = GetTemplateChild(ElementName.VolumeElement) as VolumeControl;
+            timeContainerElement = GetTemplateChild(ElementName.TimeContainerElement) as Border;
             currentTimeElement = GetTemplateChild(ElementName.CurrentTimeElement) as TextBlock;
             totalTimeElement = GetTemplateChild(ElementName.TotalTimeElement) as TextBlock;
             bitrateElement = GetTemplateChild(ElementName.BitrateElement) as Bitrate;
@@ -672,12 +683,12 @@ namespace Microsoft.SilverlightMediaFramework.Player
             }
 
             // slow motion button
-            if (slowMotionElement != null)
-            {
-                // hookup event handlers
-                slowMotionElement.Checked += slowMotionElement_Checked;
-                slowMotionElement.Unchecked += slowMotionElement_Unchecked;
-            }
+            //if (slowMotionElement != null)
+            //{
+            //    // hookup event handlers
+            //    slowMotionElement.Checked += slowMotionElement_Checked;
+            //    slowMotionElement.Unchecked += slowMotionElement_Unchecked;
+            //}
 
             if (fastForwardElement != null)
             {
@@ -747,11 +758,11 @@ namespace Microsoft.SilverlightMediaFramework.Player
             }
 
             // slow motion button
-            if (slowMotionElement != null)
-            {
-                slowMotionElement.Checked -= slowMotionElement_Checked;
-                slowMotionElement.Unchecked -= slowMotionElement_Unchecked;
-            }
+            //if (slowMotionElement != null)
+            //{
+            //    slowMotionElement.Checked -= slowMotionElement_Checked;
+            //    slowMotionElement.Unchecked -= slowMotionElement_Unchecked;
+            //}
 
             if (fastForwardElement != null)
             {
@@ -817,22 +828,26 @@ namespace Microsoft.SilverlightMediaFramework.Player
 
         private void playElement_PlayControlClicked(object sender, RoutedEventArgs e)
         {
-            switch (mediaElement.CurrentPlaybackState)
+            this.OnPlayControlClicked();
+            ControlHelper.RaiseEvent(PlayControlClicked, this);
+            //Logger.Log(new PlayerLog(PlayerLogType.PlayControlClicked, mediaElement.CurrentPlaybackState) { Sender = this, Message = "PlayControlClicked" });
+        }
+
+        virtual protected void OnPlayControlClicked()
+        {
+            switch (mediaElement.CurrentState)
             {
-                case PlaybackState.Playing:
-                    mediaElement.SetPlaybackRate(1);
+                case MediaElementState.Playing:
+                    //mediaElement.SetPlaybackRate(1);
                     if (mediaElement.CanPause)
                         mediaElement.Pause();
                     break;
 
                 default:
                     mediaElement.Play();
-                    mediaElement.SetPlaybackRate(1);
+                    //mediaElement.SetPlaybackRate(1);
                     break;
             }
-
-            ControlHelper.RaiseEvent(PlayControlClicked, this);
-            Logger.Log(new PlayerLog(PlayerLogType.PlayControlClicked, mediaElement.CurrentPlaybackState) { Sender = this, Message = "PlayControlClicked" });
         }
 
         private void playSpeedElement_SnapValueChanged(object sender, SnapValueEventArgs e)
@@ -840,20 +855,20 @@ namespace Microsoft.SilverlightMediaFramework.Player
             if (mediaElement == null)
                 return;
 
-            // new playback rate to use
-            double rate = e.SnapValue;
+            //// new playback rate to use
+            //double rate = e.SnapValue;
 
-            // fast forward, can only fast forward when not in live mode
-            if (rate > 1.0 && LiveMode != LiveModeState.Live)
-                mediaElement.SetPlaybackRate(rate);
+            //// fast forward, can only fast forward when not in live mode
+            //if (rate > 1.0 && LiveMode != LiveModeState.Live)
+            //    mediaElement.SetPlaybackRate(rate);
 
-            // always set for rewind and normal playback speeds
-            if (rate <= 1.0 && CanRewind)
-                mediaElement.SetPlaybackRate(rate);
+            //// always set for rewind and normal playback speeds
+            //if (rate <= 1.0 && CanRewind)
+            //    mediaElement.SetPlaybackRate(rate);
 
-            // if not specifying standard playback, make sure the video is playing
-            if (rate != 1.0)
-                mediaElement.Play();
+            //// if not specifying standard playback, make sure the video is playing
+            //if (rate != 1.0)
+            //    mediaElement.Play();
         }
 
         // SSME has a rewind limit where the playback rate cannot be set to a
@@ -865,7 +880,6 @@ namespace Microsoft.SilverlightMediaFramework.Player
                 rewindElement.IsEnabled = CanRewind;
             }
         }
-
 
         private void playElement_PlayStateChanged(object sender, RoutedEventArgs e)
         {
@@ -879,6 +893,12 @@ namespace Microsoft.SilverlightMediaFramework.Player
 
                 this.PlayStateChanged(this, args);
             }
+        }
+
+        public double DefaultVolumeLevel
+        {
+            get { return VolumeControl.DefaultVolumeLevel; }
+            set { if (value > 0 && value <= 1.0) VolumeControl.DefaultVolumeLevel = value; }
         }
 
         public double VolumeLevel
@@ -925,55 +945,39 @@ namespace Microsoft.SilverlightMediaFramework.Player
             Logger.Log(new PlayerLog(PlayerLogType.MuteClicked) { Sender = this, Message = "MuteClicked" });
         }
 
-        protected virtual void mediaElement_CurrentStateChanged(object sender, RoutedEventArgs e)
+        private void mediaElement_CurrentStateChanged(object sender, RoutedEventArgs e)
+        {
+            var s = mediaElement.CurrentState;
+            this.OnMediaCurrentStateChanged(s);
+            Logger.Log(new PlayerLog(PlayerLogType.MediaCurrentStateChanged) { Sender = MediaElement, Message = "CurrentStateChanged: " + s.ToString() });
+        }
+
+        virtual protected void OnMediaCurrentStateChanged(MediaElementState currentState)
         {
             // update buffering display
             UpdateBufferingState();
-        }
 
-        // Eventually, CurrentStateChanged & CurrentPlaybackStateChanged may be able to be merged...
-        private void mediaElement_CurrentPlaybackStateChanged(object sender, RoutedEventArgs e)
-        {
-            switch (mediaElement.CurrentPlaybackState)
+            switch (mediaElement.CurrentState)
             {
-                case PlaybackState.Playing:
+                case MediaElementState.Playing:
                     if (playElement != null)
                         playElement.CurrentPlayState = PlayState.Playing;
                     statusTimer.Start();
                     pollingTimer.Start();
                     UpdateDisplay();
                     break;
-                case PlaybackState.Paused:
+                case MediaElementState.Paused:
                     if (playElement != null)
                         playElement.CurrentPlayState = PlayState.Paused;
                     UpdateDisplay();
                     pollingTimer.Stop();
                     break;
-                case PlaybackState.FastForwarding:
-                    if (playElement != null)
-                        playElement.CurrentPlayState = PlayState.FastForwarding;
-                    pollingTimer.Stop();
-                    break;
-                case PlaybackState.Rewinding:
-                    if (playElement != null)
-                        playElement.CurrentPlayState = PlayState.Rewinding;
-                    pollingTimer.Stop();
-                    break;
-                case PlaybackState.SlowMotionPlayback:
-                    if (playElement != null)
-                        playElement.CurrentPlayState = PlayState.SlowMotion;
-                    pollingTimer.Stop();
-                    break;
-                case PlaybackState.Stopped:
+                case MediaElementState.Stopped:
                     if (playElement != null)
                         playElement.CurrentPlayState = PlayState.Stopped;
                     pollingTimer.Stop();
                     break;
-                case PlaybackState.Scrubbing:
-                    // will this be tied to IsScrubbing?
-                    // if so we can move the polling timer stop here rather than in the scrub events
-                    break;
-                case PlaybackState.Buffering:
+                case MediaElementState.Buffering:
                     // don't update the play state for buffering
                     break;
                 default:
@@ -983,10 +987,84 @@ namespace Microsoft.SilverlightMediaFramework.Player
             }
         }
 
+        // Eventually, CurrentStateChanged & CurrentPlaybackStateChanged may be able to be merged...
+        //private void mediaElement_CurrentPlaybackStateChanged(object sender, RoutedEventArgs e)
+        //{
+        //    switch (mediaElement.CurrentPlaybackState)
+        //    {
+        //        case PlaybackState.Playing:
+        //            if (playElement != null)
+        //                playElement.CurrentPlayState = PlayState.Playing;
+        //            statusTimer.Start();
+        //            pollingTimer.Start();
+        //            UpdateDisplay();
+        //            break;
+        //        case PlaybackState.Paused:
+        //            if (playElement != null)
+        //                playElement.CurrentPlayState = PlayState.Paused;
+        //            UpdateDisplay();
+        //            pollingTimer.Stop();
+        //            break;
+        //        case PlaybackState.FastForwarding:
+        //            if (playElement != null)
+        //                playElement.CurrentPlayState = PlayState.FastForwarding;
+        //            pollingTimer.Stop();
+        //            break;
+        //        case PlaybackState.Rewinding:
+        //            if (playElement != null)
+        //                playElement.CurrentPlayState = PlayState.Rewinding;
+        //            pollingTimer.Stop();
+        //            break;
+        //        case PlaybackState.SlowMotionPlayback:
+        //            if (playElement != null)
+        //                playElement.CurrentPlayState = PlayState.SlowMotion;
+        //            pollingTimer.Stop();
+        //            break;
+        //        case PlaybackState.Stopped:
+        //            if (playElement != null)
+        //                playElement.CurrentPlayState = PlayState.Stopped;
+        //            pollingTimer.Stop();
+        //            break;
+        //        case PlaybackState.Scrubbing:
+        //            // will this be tied to IsScrubbing?
+        //            // if so we can move the polling timer stop here rather than in the scrub events
+        //            break;
+        //        case PlaybackState.Buffering:
+        //            // don't update the play state for buffering
+        //            break;
+        //        default:
+        //            if (playElement != null)
+        //                playElement.CurrentPlayState = PlayState.Paused;
+        //            break;
+        //    }
+        //}
+
         private void mediaElement_MediaOpened(object sender, RoutedEventArgs e)
+        {
+            this.OnMediaOpened();
+            Logger.Log(new PlayerLog(PlayerLogType.MediaOpened) { Sender = MediaElement, Message = "MediaOpened" });
+
+            if (this.MediaOpened != null)
+            {
+                this.MediaOpened(this, new RoutedEventArgs());
+            }
+        }
+
+        virtual protected void OnMediaOpened()
         {
             EnableControls(true);
             statusTimer.Start();
+
+            if (mediaElement.Source != null)
+            {
+                this.isProgressive = true;
+                Logger.Log(new PlayerLog(PlayerLogType.MediaOpened) { Sender = MediaElement, Message = "SourceOpened: " + mediaElement.Source.ToString() });
+            }
+            else
+            {
+                this.isProgressive = false;
+                Logger.Log(new PlayerLog(PlayerLogType.MediaOpened) { Sender = MediaElement, Message = "StreamOpened" });
+            }
 
             // initialize volume
             if (volumeElement != null)
@@ -997,11 +1075,12 @@ namespace Microsoft.SilverlightMediaFramework.Player
             // enable the Live button if using a live stream
             if (liveElement != null && mediaElement != null)
             {
-                liveElement.IsEnabled = mediaElement.IsLive;
+                liveElement.IsEnabled = false;
+                //liveElement.IsEnabled = mediaElement.IsLive;
             }
 
             // Default playback rate
-            mediaElement.SetPlaybackRate(1);
+            //mediaElement.SetPlaybackRate(1);
 
             // initialize scrubber
             if (positionElement != null)
@@ -1023,11 +1102,20 @@ namespace Microsoft.SilverlightMediaFramework.Player
 
             // make sure not displaying buffering indicator
             UpdateBufferingState(false);
-
-            Logger.Log(new PlayerLog(PlayerLogType.MediaOpened) { Sender = MediaElement, Message = "MediaOpened" });
         }
 
         private void mediaElement_MediaEnded(object sender, RoutedEventArgs e)
+        {
+            this.OnMediaEnded();
+            Logger.Log(new PlayerLog(PlayerLogType.MediaEnded) { Sender = MediaElement, Message = "MediaEnded" });
+
+            if (this.MediaEnded != null)
+            {
+                this.MediaEnded(this, new RoutedEventArgs());
+            }
+        }
+
+        virtual protected void OnMediaEnded()
         {
             // stop the timer
             statusTimer.Stop();
@@ -1052,8 +1140,8 @@ namespace Microsoft.SilverlightMediaFramework.Player
             UpdateBufferingState(false);
 
             // reset playback speed when video ends
-            if (mediaElement != null)
-                mediaElement.SetPlaybackRate(1.0);
+            //if (mediaElement != null)
+            //    mediaElement.SetPlaybackRate(1.0);
 
             // need to reset the rotary dial is the user is still interacting with
             // it, this returns to the default position and removes mouse capture
@@ -1062,11 +1150,21 @@ namespace Microsoft.SilverlightMediaFramework.Player
             //will not be publicly available for the upcoming PDC release of the SMF.
             //Kevin Rohling 11-10-2009 12:12PM
             //    playSpeedElement.Reset();
-
-            Logger.Log(new PlayerLog(PlayerLogType.MediaEnded) { Sender = MediaElement, Message = "MediaEnded" });
         }
 
         private void mediaElement_MediaFailed(object sender, ExceptionRoutedEventArgs e)
+        {
+            this.OnMediaFailed(e.ErrorException);
+
+            if (this.MediaFailed != null)
+            {
+                this.MediaFailed(this, new RoutedEventArgs());
+            }
+
+            // CoreSmoothStreamingMediaElement_MediaFailedでLogは出力されている
+        }
+
+        virtual protected void OnMediaFailed(Exception e)
         {
             EnableControls(false);
             statusTimer.Stop();
@@ -1079,11 +1177,6 @@ namespace Microsoft.SilverlightMediaFramework.Player
             if (liveElement != null)
             {
                 liveElement.IsEnabled = false;
-            }
-
-            if (this.MediaFailed != null)
-            {
-                this.MediaFailed(this, new RoutedEventArgs());
             }
         }
 
@@ -1136,7 +1229,8 @@ namespace Microsoft.SilverlightMediaFramework.Player
 
             // start polling again as long as we're in a Playing state
             // will this eventually be encapsulated in CurrentPlaybackStateChanged?
-            if (mediaElement != null && mediaElement.CurrentPlaybackState == PlaybackState.Playing)
+            //if (mediaElement != null && mediaElement.CurrentPlaybackState == PlaybackState.Playing)
+            if (mediaElement != null && mediaElement.CurrentState == MediaElementState.Playing)
             {
                 pollingTimer.Start();
             }
@@ -1144,100 +1238,101 @@ namespace Microsoft.SilverlightMediaFramework.Player
             Logger.Log(new PlayerLog(PlayerLogType.ScrubCompleted) { Sender = this, Message = "ScrubCompleted" });
         }
 
-        private void mediaElement_PlaybackBitrateChanged(object sender, RoutedEventArgs e)
-        {
-            if (bitrateElement != null && mediaElement != null)
-            {
-                bitrateElement.BitrateValue = mediaElement.PlaybackBitrate;
-            }
+        //private void mediaElement_PlaybackBitrateChanged(object sender, RoutedEventArgs e)
+        //{
 
-            Logger.Log(new PlayerLog(PlayerLogType.DownloadBitrateChange)
-            {
-                Sender = MediaElement,
-                Message = string.Format(CultureInfo.InvariantCulture, "PlaybackBitrateChanged: {0}",
-                    mediaElement.PlaybackBitrate.ToString(CultureInfo.InvariantCulture))
-            });
-        }
+        //    if (bitrateElement != null && mediaElement != null)
+        //    {
+        //        bitrateElement.BitrateValue = mediaElement.PlaybackBitrate;
+        //    }
 
-        private void mediaElement_MaximumPlaybackBitrateChanged(object sender, RoutedEventArgs e)
-        {
-            if (bitrateElement != null && mediaElement != null)
-            {
-                bitrateElement.MaximumBitrate = mediaElement.MaximumPlaybackBitrate;
-            }
+        //    Logger.Log(new PlayerLog(PlayerLogType.DownloadBitrateChange)
+        //    {
+        //        Sender = MediaElement,
+        //        Message = string.Format(CultureInfo.InvariantCulture, "PlaybackBitrateChanged: {0}",
+        //            mediaElement.PlaybackBitrate.ToString(CultureInfo.InvariantCulture))
+        //    });
+        //}
 
-            Logger.Log(new PlayerLog(PlayerLogType.DownloadBitrateChange)
-            {
-                Sender = MediaElement,
-                Message = string.Format(CultureInfo.InvariantCulture, "MaximumPlaybackBitrateChanged: {0}",
-                    mediaElement.MaximumPlaybackBitrate.ToString(CultureInfo.InvariantCulture))
-            });
-        }
+        //private void mediaElement_MaximumPlaybackBitrateChanged(object sender, RoutedEventArgs e)
+        //{
+        //    if (bitrateElement != null && mediaElement != null)
+        //    {
+        //        bitrateElement.MaximumBitrate = mediaElement.MaximumPlaybackBitrate;
+        //    }
 
-        private void mediaElement_PlaybackRateChanged(object sender, RoutedEventArgs e)
-        {
-            // the playback rate changed, need to update the rotary dial,
-            // don't process if the user is interacting with the rotary dial
-            //Commented out playSpeedElement because the RotaryControl
-            //will not be publicly available for the upcoming PDC release of the SMF.
-            //Kevin Rohling 11-10-2009 12:12PM
-            //if (mediaElement != null && playSpeedElement != null && !playSpeedElement.IsMouseCaptured)
-            //{
-            //    // the rotary dial does not have a value for slow motion (0.5),
-            //    // use the default angle (1.0) for slow motion
-            //    double angleRate = (mediaElement.PlaybackRate == 0.5) ? 1.0 : mediaElement.PlaybackRate;
-            //    playSpeedElement.SetAngleFromValue(angleRate);
-            //}
+        //    Logger.Log(new PlayerLog(PlayerLogType.DownloadBitrateChange)
+        //    {
+        //        Sender = MediaElement,
+        //        Message = string.Format(CultureInfo.InvariantCulture, "MaximumPlaybackBitrateChanged: {0}",
+        //            mediaElement.MaximumPlaybackBitrate.ToString(CultureInfo.InvariantCulture))
+        //    });
+        //}
 
-            // need to update the checked state of the slow motion button
-            if (slowMotionElement != null)
-            {
-                // wrap in flag so it does not excute the code to 
-                // set the playback rate again
-                ignoreSlowMotionClick = true;
-                slowMotionElement.IsChecked = (mediaElement.PlaybackRate == 0.5);
-                ignoreSlowMotionClick = false;
-            }
-        }
+        //private void mediaElement_PlaybackRateChanged(object sender, RoutedEventArgs e)
+        //{
+        //    // the playback rate changed, need to update the rotary dial,
+        //    // don't process if the user is interacting with the rotary dial
+        //    //Commented out playSpeedElement because the RotaryControl
+        //    //will not be publicly available for the upcoming PDC release of the SMF.
+        //    //Kevin Rohling 11-10-2009 12:12PM
+        //    //if (mediaElement != null && playSpeedElement != null && !playSpeedElement.IsMouseCaptured)
+        //    //{
+        //    //    // the rotary dial does not have a value for slow motion (0.5),
+        //    //    // use the default angle (1.0) for slow motion
+        //    //    double angleRate = (mediaElement.PlaybackRate == 0.5) ? 1.0 : mediaElement.PlaybackRate;
+        //    //    playSpeedElement.SetAngleFromValue(angleRate);
+        //    //}
 
-        private void slowMotionElement_Checked(object sender, RoutedEventArgs e)
-        {
-            // don't process if set the checked state through code, not user interaction
-            if (ignoreSlowMotionClick)
-                return;
+        //    // need to update the checked state of the slow motion button
+        //    if (slowMotionElement != null)
+        //    {
+        //        // wrap in flag so it does not excute the code to 
+        //        // set the playback rate again
+        //        ignoreSlowMotionClick = true;
+        //        slowMotionElement.IsChecked = (mediaElement.PlaybackRate == 0.5);
+        //        ignoreSlowMotionClick = false;
+        //    }
+        //}
 
-            if (mediaElement != null && mediaElement.SupportedPlaybackRates != null &&
-                mediaElement.SupportedPlaybackRates.Count > 0)
-            {
-                mediaElement.SetPlaybackRate(.5);
+        //private void slowMotionElement_Checked(object sender, RoutedEventArgs e)
+        //{
+        //    // don't process if set the checked state through code, not user interaction
+        //    if (ignoreSlowMotionClick)
+        //        return;
 
-                // make sure in play mode
-                if (mediaElement.CurrentState == SmoothStreamingMediaElementState.Paused)
-                    mediaElement.Play();
-            }
+        //    if (mediaElement != null && mediaElement.SupportedPlaybackRates != null &&
+        //        mediaElement.SupportedPlaybackRates.Count > 0)
+        //    {
+        //        mediaElement.SetPlaybackRate(.5);
 
-            Logger.Log(new PlayerLog(PlayerLogType.SlowMotionClicked) { Sender = this, Message = "SlowMotionChecked" });
-        }
+        //        // make sure in play mode
+        //        if (mediaElement.CurrentState == MediaElementState.Paused)
+        //            mediaElement.Play();
+        //    }
 
-        private void slowMotionElement_Unchecked(object sender, RoutedEventArgs e)
-        {
-            // don't process if set the checked state through code, not user interaction
-            if (ignoreSlowMotionClick)
-                return;
+        //    Logger.Log(new PlayerLog(PlayerLogType.SlowMotionClicked) { Sender = this, Message = "SlowMotionChecked" });
+        //}
 
-            if (mediaElement != null)
-            {
-                // We may be reacting to the toggle button being clicked, or another DVR button clicked.
-                // If another DVR button was clicked, then we don't want to set the Play Speed or state.
-                if (mediaElement.CurrentPlaybackState == PlaybackState.SlowMotionPlayback)
-                {
-                    mediaElement.Play();
-                    mediaElement.SetPlaybackRate(1);
-                }
-            }
+        //private void slowMotionElement_Unchecked(object sender, RoutedEventArgs e)
+        //{
+        //    // don't process if set the checked state through code, not user interaction
+        //    if (ignoreSlowMotionClick)
+        //        return;
 
-            Logger.Log(new PlayerLog(PlayerLogType.SlowMotionClicked) { Sender = this, Message = "SlowMotionUnchecked" });
-        }
+        //    if (mediaElement != null)
+        //    {
+        //        // We may be reacting to the toggle button being clicked, or another DVR button clicked.
+        //        // If another DVR button was clicked, then we don't want to set the Play Speed or state.
+        //        if (mediaElement.CurrentPlaybackState == PlaybackState.SlowMotionPlayback)
+        //        {
+        //            mediaElement.Play();
+        //            mediaElement.SetPlaybackRate(1);
+        //        }
+        //    }
+
+        //    Logger.Log(new PlayerLog(PlayerLogType.SlowMotionClicked) { Sender = this, Message = "SlowMotionUnchecked" });
+        //}
 
         private void chapterPreviousElement_Click(object sender, RoutedEventArgs e)
         {
@@ -1257,10 +1352,10 @@ namespace Microsoft.SilverlightMediaFramework.Player
             //Added check to make sure the SmoothStreamingMediaElement is in
             //a valid state before attempting to fast forward -Kevin Rohling 11/11/09 11:37am
             if (mediaElement != null &&
-                !isSeeking &&
-                (this.mediaElement.CurrentState == SmoothStreamingMediaElementState.Paused
-                || this.mediaElement.CurrentState == SmoothStreamingMediaElementState.Playing
-                || this.mediaElement.CurrentState == SmoothStreamingMediaElementState.Buffering))
+                //!isSeeking &&
+                (this.mediaElement.CurrentState == MediaElementState.Paused
+                || this.mediaElement.CurrentState == MediaElementState.Playing
+                || this.mediaElement.CurrentState == MediaElementState.Buffering))
             {
 
                 if (this.UseSeekingBehavior)
@@ -1269,10 +1364,10 @@ namespace Microsoft.SilverlightMediaFramework.Player
                     //Added check to only set isSeeking = true if using a SmoothStreamingSource
                     //this is because you will not get a SeekCompleted event when using Progressive Download.
                     //Kevin Rohling 1-13-2010 2:00PM
-                    if (this.mediaElement.SmoothStreamingSource != null)
-                    {
-                        isSeeking = true;
-                    }
+                    //if (this.mediaElement.SmoothStreamingSource != null)
+                    //{
+                    //    isSeeking = true;
+                    //}
                     UpdateVideoPosition(newPosition.TotalSeconds);
                 }
                 else
@@ -1283,13 +1378,11 @@ namespace Microsoft.SilverlightMediaFramework.Player
                                orderby d
                                select d;
                     double rate = (list.Count() == 0) ? 1.0 : list.First();
-                    mediaElement.SetPlaybackRate(rate);
+                    //mediaElement.SetPlaybackRate(rate);
                 }
 
-
-
                 // make sure in play mode
-                if (mediaElement.CurrentState == SmoothStreamingMediaElementState.Paused)
+                if (mediaElement.CurrentState == MediaElementState.Paused)
                     mediaElement.Play();
 
                 Logger.Log(new PlayerLog(PlayerLogType.FastForwardClicked) { Sender = this, Message = "FastForwardClicked" });
@@ -1301,9 +1394,9 @@ namespace Microsoft.SilverlightMediaFramework.Player
             //Added check to make sure the SmoothStreamingMediaElement is in
             //a valid state before attempting to rewind -Kevin Rohling 11/11/09 11:37am
             if (mediaElement != null &&
-                (this.mediaElement.CurrentState == SmoothStreamingMediaElementState.Paused
-                || this.mediaElement.CurrentState == SmoothStreamingMediaElementState.Playing
-                || this.mediaElement.CurrentState == SmoothStreamingMediaElementState.Buffering))
+                (this.mediaElement.CurrentState == MediaElementState.Paused
+                || this.mediaElement.CurrentState == MediaElementState.Playing
+                || this.mediaElement.CurrentState == MediaElementState.Buffering))
             {
                 if (this.UseSeekingBehavior)
                 {
@@ -1318,12 +1411,12 @@ namespace Microsoft.SilverlightMediaFramework.Player
                                orderby d descending
                                select d;
                     double rate = (list.Count() == 0) ? 1.0 : list.First();
-                    mediaElement.SetPlaybackRate(rate);
+                    //mediaElement.SetPlaybackRate(rate);
                 }
 
 
                 // make sure in play mode
-                if (mediaElement.CurrentState == SmoothStreamingMediaElementState.Paused)
+                if (mediaElement.CurrentState == MediaElementState.Paused)
                     mediaElement.Play();
 
                 Logger.Log(new PlayerLog(PlayerLogType.RewindClicked) { Sender = this, Message = "RewindClicked" });
@@ -1353,7 +1446,7 @@ namespace Microsoft.SilverlightMediaFramework.Player
                 mediaElement.Position = replayPosition;
 
                 // make sure in play mode when clicking instant replay
-                if (mediaElement.CurrentState == SmoothStreamingMediaElementState.Paused)
+                if (mediaElement.CurrentState == MediaElementState.Paused)
                     mediaElement.Play();
 
                 Logger.Log(new PlayerLog(PlayerLogType.ReplayClicked) { Sender = this, Message = "ReplayClicked" });
@@ -1363,30 +1456,30 @@ namespace Microsoft.SilverlightMediaFramework.Player
         // seek to the video live position, resume play, set to 1x playback speed
         private void JumpToLive()
         {
-            if (mediaElement != null && mediaElement.IsLive)
-            {
-                // jump to live position
-                if (mediaElement.StartSeekToLive() && this.JumpedToLive != null)
-                {
-                    this.JumpedToLive(this, new RoutedEventArgs());
-                }
+            //if (mediaElement != null && mediaElement.IsLive)
+            //{
+            //    // jump to live position
+            //    if (mediaElement.StartSeekToLive() && this.JumpedToLive != null)
+            //    {
+            //        this.JumpedToLive(this, new RoutedEventArgs());
+            //    }
 
-                // always want to start playing 
-                if (mediaElement.CurrentState != SmoothStreamingMediaElementState.Playing)
-                    mediaElement.Play();
+            //    // always want to start playing 
+            //    if (mediaElement.CurrentState != SmoothStreamingMediaElementState.Playing)
+            //        mediaElement.Play();
 
-                //Commented out the following block because it was causing the SSME
-                //to enter a Retrying state. -Kevin Rohling 11/11/2009 4:07PM
-                // reset playback speed
-                //if (mediaElement.PlaybackRate != 1.0)
-                //    mediaElement.SetPlaybackRate(1.0);
+            //    //Commented out the following block because it was causing the SSME
+            //    //to enter a Retrying state. -Kevin Rohling 11/11/2009 4:07PM
+            //    // reset playback speed
+            //    //if (mediaElement.PlaybackRate != 1.0)
+            //    //    mediaElement.SetPlaybackRate(1.0);
 
-                // jump to live position
-                mediaElement.StartSeekToLive();
+            //    // jump to live position
+            //    mediaElement.StartSeekToLive();
 
-            }
+            //}
 
-            Logger.Log(new PlayerLog(PlayerLogType.JumpToLiveClicked) { Sender = this, Message = "JumpToLiveClicked" });
+            //Logger.Log(new PlayerLog(PlayerLogType.JumpToLiveClicked) { Sender = this, Message = "JumpToLiveClicked" });
         }
 
         private void CheckForReachedMarkers()
@@ -1545,11 +1638,11 @@ namespace Microsoft.SilverlightMediaFramework.Player
             });
         }
 
-        private static void OnLiveDurationPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
-        {
-            Player source = d as Player;
-            source.OnLiveDurationChanged();
-        }
+        //private static void OnLiveDurationPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        //{
+        //    Player source = d as Player;
+        //    source.OnLiveDurationChanged();
+        //}
 
         private static void OnScrubberRangeOverridePropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         {
@@ -1557,23 +1650,23 @@ namespace Microsoft.SilverlightMediaFramework.Player
             source.OnScrubberRangeOverrideChanged();
         }
 
-        private static void OnAlwaysDisplayVODPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
-        {
-            Player source = d as Player;
-            source.OnAlwaysDisplayVODChanged();
-        }
+        //private static void OnAlwaysDisplayVODPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        //{
+        //    Player source = d as Player;
+        //    source.OnAlwaysDisplayVODChanged();
+        //}
 
-        private static void OnLiveDurationExtendPercentagePropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
-        {
-            Player source = d as Player;
-            source.OnLiveDurationExtendPercentageChanged();
-        }
+        //private static void OnLiveDurationExtendPercentagePropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        //{
+        //    Player source = d as Player;
+        //    source.OnLiveDurationExtendPercentageChanged();
+        //}
 
-        private static void OnHighDefinitionBitratePropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
-        {
-            Player source = d as Player;
-            source.OnHighDefinitionBitrateChanged();
-        }
+        //private static void OnHighDefinitionBitratePropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        //{
+        //    Player source = d as Player;
+        //    source.OnHighDefinitionBitrateChanged();
+        //}
 
         private static void OnMarkerDataPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         {
@@ -1599,13 +1692,13 @@ namespace Microsoft.SilverlightMediaFramework.Player
 
         // the consumer can specify the duration of the live event,
         // this is used as the starting point for the estimated duration
-        private void OnLiveDurationChanged()
-        {
-            if (mediaElement != null)
-            {
-                mediaElement.LiveDuration = this.LiveDuration;
-            }
-        }
+        //private void OnLiveDurationChanged()
+        //{
+        //    if (mediaElement != null)
+        //    {
+        //        mediaElement.LiveDuration = this.LiveDuration;
+        //    }
+        //}
 
         private void OnScrubberRangeOverrideChanged()
         {
@@ -1624,26 +1717,26 @@ namespace Microsoft.SilverlightMediaFramework.Player
             }
         }
 
-        private void OnAlwaysDisplayVODChanged()
-        {
-            UpdateLiveMode();
-        }
+        //private void OnAlwaysDisplayVODChanged()
+        //{
+        //    UpdateLiveMode();
+        //}
 
-        private void OnHighDefinitionBitrateChanged()
-        {
-            if (bitrateElement != null)
-            {
-                bitrateElement.HighDefinitionBitrate = HighDefinitionBitrate;
-            }
-        }
+        //virtual protected void OnHighDefinitionBitrateChanged()
+        //{
+        //    if (bitrateElement != null)
+        //    {
+        //        bitrateElement.HighDefinitionBitrate = HighDefinitionBitrate;
+        //    }
+        //}
 
-        private void OnLiveDurationExtendPercentageChanged()
-        {
-            if (mediaElement != null)
-            {
-                mediaElement.LiveDurationExtendPercentage = this.LiveDurationExtendPercentage;
-            }
-        }
+        //private void OnLiveDurationExtendPercentageChanged()
+        //{
+        //    if (mediaElement != null)
+        //    {
+        //        mediaElement.LiveDurationExtendPercentage = this.LiveDurationExtendPercentage;
+        //    }
+        //}
 
         private void OnMarkerDataChanged()
         {
@@ -1668,29 +1761,29 @@ namespace Microsoft.SilverlightMediaFramework.Player
                 mediaElement.MediaFailed += mediaElement_MediaFailed;
                 mediaElement.MediaEnded += mediaElement_MediaEnded;
                 mediaElement.CurrentStateChanged += mediaElement_CurrentStateChanged;
-                mediaElement.CurrentPlaybackStateChanged += mediaElement_CurrentPlaybackStateChanged;
-                mediaElement.PlaybackBitrateChanged += mediaElement_PlaybackBitrateChanged;
-                mediaElement.MaximumPlaybackBitrateChanged += mediaElement_MaximumPlaybackBitrateChanged;
-                mediaElement.PlaybackRateChanged += mediaElement_PlaybackRateChanged;
-                mediaElement.SeekCompleted += mediaElement_SeekCompleted;
+                //mediaElement.CurrentPlaybackStateChanged += mediaElement_CurrentPlaybackStateChanged;
+                //mediaElement.PlaybackBitrateChanged += mediaElement_PlaybackBitrateChanged;
+                //mediaElement.MaximumPlaybackBitrateChanged += mediaElement_MaximumPlaybackBitrateChanged;
+                //mediaElement.PlaybackRateChanged += mediaElement_PlaybackRateChanged;
+                //mediaElement.SeekCompleted += mediaElement_SeekCompleted;
 
-                // instream data
-                if (inStreamData != null)
-                    inStreamData.MediaElement = mediaElement;
+                //// instream data
+                //if (inStreamData != null)
+                //    inStreamData.MediaElement = mediaElement;
 
-                // initialize
-                OnLiveDurationChanged();
-                OnLiveDurationExtendPercentageChanged();
+                //// initialize
+                //OnLiveDurationChanged();
+                //OnLiveDurationExtendPercentageChanged();
                 OnScrubberRangeOverrideChanged();
             }
         }
 
 
-        private bool isSeeking = false;
-        void mediaElement_SeekCompleted(object sender, SeekCompletedEventArgs e)
-        {
-            this.isSeeking = false;
-        }
+        //private bool isSeeking = false;
+        //void mediaElement_SeekCompleted(object sender, SeekCompletedEventArgs e)
+        //{
+        //    this.isSeeking = false;
+        //}
 
         private void UninitializeMediaElement()
         {
@@ -1701,13 +1794,13 @@ namespace Microsoft.SilverlightMediaFramework.Player
                 mediaElement.MediaFailed -= mediaElement_MediaFailed;
                 mediaElement.MediaEnded -= mediaElement_MediaEnded;
                 mediaElement.CurrentStateChanged -= mediaElement_CurrentStateChanged;
-                mediaElement.CurrentPlaybackStateChanged -= mediaElement_CurrentPlaybackStateChanged;
-                mediaElement.PlaybackBitrateChanged -= mediaElement_PlaybackBitrateChanged;
-                mediaElement.MaximumPlaybackBitrateChanged -= mediaElement_MaximumPlaybackBitrateChanged;
+                //mediaElement.CurrentPlaybackStateChanged -= mediaElement_CurrentPlaybackStateChanged;
+                //mediaElement.PlaybackBitrateChanged -= mediaElement_PlaybackBitrateChanged;
+                //mediaElement.MaximumPlaybackBitrateChanged -= mediaElement_MaximumPlaybackBitrateChanged;
             }
         }
 
-        public void ReplayVideo()
+        virtual public void ReplayVideo()
         {
             if (mediaElement != null)
             {
@@ -1718,14 +1811,14 @@ namespace Microsoft.SilverlightMediaFramework.Player
                 // it's not in the buffering state and media-failed is not raised,
                 // reload the video as a workaround
 
-                Uri source = mediaElement.SmoothStreamingSource;
-                mediaElement.SmoothStreamingSource = null;
-                mediaElement.SmoothStreamingSource = new Uri(source.AbsoluteUri);
-                mediaElement.Play();
+                //Uri source = mediaElement.SmoothStreamingSource;
+                //mediaElement.SmoothStreamingSource = null;
+                //mediaElement.SmoothStreamingSource = new Uri(source.AbsoluteUri);
+                //mediaElement.Play();
             }
         }
 
-        public void StartCountdown(TimeSpan duration, string displayFormat)
+        virtual public void StartCountdown(TimeSpan duration, string displayFormat)
         {
             // eventually tie in display format
 
@@ -1737,7 +1830,7 @@ namespace Microsoft.SilverlightMediaFramework.Player
             }
         }
 
-        public void StopCountdown()
+        virtual public void StopCountdown()
         {
             if (countdownElement != null)
             {
@@ -1747,7 +1840,7 @@ namespace Microsoft.SilverlightMediaFramework.Player
             Logger.Log(new PlayerLog(PlayerLogType.AdCompleted) { Sender = this, Message = "AdCompleted" });
         }
 
-        private void InitializeControls()
+        virtual protected void InitializeControls()
         {
             // disable all controls
             EnableControls(false);
@@ -1756,13 +1849,13 @@ namespace Microsoft.SilverlightMediaFramework.Player
             UpdateDisplay();
         }
 
-        private void EnableControls(bool enabled)
+        protected void EnableControls(bool enabled)
         {
             ControlHelper.EnableControl(playElement, enabled);
             ControlHelper.EnableControl(positionElement, enabled);
         }
 
-        private void UpdateVideoPosition(double position)
+        virtual protected void UpdateVideoPosition(double position)
         {
             if (mediaElement != null)
             {
@@ -1772,7 +1865,7 @@ namespace Microsoft.SilverlightMediaFramework.Player
         }
 
         // update the UI to reflect the current player state
-        private void UpdateDisplay()
+        virtual protected void UpdateDisplay()
         {
             // can't update anything if don't have a media element
             if (mediaElement == null)
@@ -1804,7 +1897,7 @@ namespace Microsoft.SilverlightMediaFramework.Player
         // update display when media ended, this updates the
         // current position and duration to the end time
         // of the video
-        private void UpdateDisplayMediaEnded()
+        virtual protected void UpdateDisplayMediaEnded()
         {
             if (mediaElement != null)
             {
@@ -1829,14 +1922,14 @@ namespace Microsoft.SilverlightMediaFramework.Player
             }
         }
 
-        private void UpdateCurrentPositionDisplay()
+        virtual protected void UpdateCurrentPositionDisplay()
         {
             // update position using the real video position
-            if (currentTimeElement != null && mediaElement != null && !mediaElement.IsSeeking)
+            if (currentTimeElement != null && mediaElement != null/* && !mediaElement.IsSeeking*/)
                 UpdateCurrentPositionDisplay(mediaElement.Position);
         }
 
-        private void UpdateCurrentPositionDisplay(TimeSpan time)
+        virtual protected void UpdateCurrentPositionDisplay(TimeSpan time)
         {
             if (currentTimeElement != null && mediaElement != null)
             {
@@ -1856,7 +1949,7 @@ namespace Microsoft.SilverlightMediaFramework.Player
             }
         }
 
-        private void UpdateTotalTimeDisplay()
+        virtual protected void UpdateTotalTimeDisplay()
         {
             if (totalTimeElement != null && mediaElement != null)
             {
@@ -1876,23 +1969,32 @@ namespace Microsoft.SilverlightMediaFramework.Player
             }
         }
 
-        private void UpdatePositionScrubber()
+        virtual protected void UpdatePositionScrubber()
         {
             // first see if have elements, also make sure not currently seeking
-            if (positionElement == null || mediaElement == null || mediaElement.IsSeeking)
+            if (positionElement == null || mediaElement == null/* || mediaElement.IsSeeking*/)
                 return;
 
             // update scrubber when playing video
             UpdatePositionScrubberRange();
 
             // uppdate available bar in live mode
-            if (mediaElement != null && (LiveMode == LiveModeState.Live || LiveMode == LiveModeState.GoToLive))
+            //if (mediaElement != null && (LiveMode == LiveModeState.Live || LiveMode == LiveModeState.GoToLive))
+            //{
+            //    // LivePosition is the position of the live feed, but not what is visible to the
+            //    // user, need to back off that position by the buffer amount, otherwise the
+            //    // available bar is always ahead of the scrubber thumb position
+            //    double liveBuffer = (double)(mediaElement.LiveBufferSize / 1000);
+            //    positionElement.Available = mediaElement.LivePosition - liveBuffer;
+            //}
+
+            // プログレッシブダウンロードでavaliable barを流用する
+            if (mediaElement != null && LiveMode == LiveModeState.VOD)
             {
-                // LivePosition is the position of the live feed, but not what is visible to the
-                // user, need to back off that position by the buffer amount, otherwise the
-                // available bar is always ahead of the scrubber thumb position
-                double liveBuffer = (double)(mediaElement.LiveBufferSize / 1000);
-                positionElement.Available = mediaElement.LivePosition - liveBuffer;
+                positionElement.Available = mediaElement.NaturalDuration.TimeSpan.TotalSeconds * mediaElement.DownloadProgress;
+#if DEBUG
+                Logger.Log(new PlayerLog(PlayerLogType.PositionAvailableChanged) { Sender = this, Message = "PositionAvailableChanged: " + positionElement.Available.ToString() });
+#endif
             }
 
             // update scrubber position in timeline
@@ -1900,7 +2002,7 @@ namespace Microsoft.SilverlightMediaFramework.Player
         }
 
         // updates the min and max values of the scrubber
-        private void UpdatePositionScrubberRange()
+        virtual protected void UpdatePositionScrubberRange()
         {
             if (mediaElement != null && positionElement != null)
             {
@@ -1921,30 +2023,32 @@ namespace Microsoft.SilverlightMediaFramework.Player
         }
 
         // set the live mode based on current video type (live or vod) and video position
-        private void UpdateLiveMode()
+        virtual protected void UpdateLiveMode()
         {
-            // don't have a media element
-            if (mediaElement == null)
-            {
-                LiveMode = LiveModeState.None;
-                return;
-            }
+            LiveMode = LiveModeState.VOD;
 
-            // VOD mode
-            if (!mediaElement.IsLive || AlwaysDisplayVOD)
-            {
-                LiveMode = LiveModeState.VOD;
-                return;
-            }
+            //// don't have a media element
+            //if (mediaElement == null)
+            //{
+            //    LiveMode = LiveModeState.None;
+            //    return;
+            //}
 
-            // live mode has two states, Live means the position is currently at the live
-            // position, GoToLive means it's a live video but the position is not at the 
-            // live position, note there is a range that is considered to be at the live
-            // position, otherwise it would always be in GoToLive mode
-            LiveMode = mediaElement.IsLivePosition ? LiveModeState.Live : LiveModeState.GoToLive;
+            //// VOD mode
+            //if (!mediaElement.IsLive || AlwaysDisplayVOD)
+            //{
+            //    LiveMode = LiveModeState.VOD;
+            //    return;
+            //}
+
+            //// live mode has two states, Live means the position is currently at the live
+            //// position, GoToLive means it's a live video but the position is not at the 
+            //// live position, note there is a range that is considered to be at the live
+            //// position, otherwise it would always be in GoToLive mode
+            //LiveMode = mediaElement.IsLivePosition ? LiveModeState.Live : LiveModeState.GoToLive;
         }
 
-        protected virtual void OnIsAdPlayingChanged()
+        virtual protected void OnIsAdPlayingChanged()
         {
             if (IsAdPlayingChanged != null)
             {
@@ -1956,12 +2060,12 @@ namespace Microsoft.SilverlightMediaFramework.Player
         }
 
         // determine the buffering state based on the current state of the media element
-        private void UpdateBufferingState()
+        virtual protected void UpdateBufferingState()
         {
             if (mediaElement != null)
             {
                 // make sure this feels right, might also check for MediaElementState.Opening
-                bool buffering = (mediaElement.CurrentState == SmoothStreamingMediaElementState.Buffering);
+                bool buffering = (mediaElement.CurrentState == MediaElementState.Buffering);
                 UpdateBufferingState(buffering);
             }
             else
@@ -1972,7 +2076,7 @@ namespace Microsoft.SilverlightMediaFramework.Player
         }
 
         // set buffering state to the specified value
-        private void UpdateBufferingState(bool buffering)
+        virtual protected void UpdateBufferingState(bool buffering)
         {
             if (bufferingElement != null)
             {
@@ -1987,34 +2091,34 @@ namespace Microsoft.SilverlightMediaFramework.Player
             }
         }
 
-        private void CheckToEnableLogging()
-        {
-            try
-            {
-                // allow SSME tracing if specify on url command line
-                if (!DesignerProperties.GetIsInDesignMode(this) && HtmlPage.Document.QueryString.ContainsKey("log"))
-                {
-                    // make sure did not specify to not log
-                    string value = HtmlPage.Document.QueryString["log"].ToLower(CultureInfo.InvariantCulture);
-                    if (value != "0" && value != "false")
-                    {
-                        // There are some issues around enabling tracing. If a TracingConfig.xml 
-                        // file is in the application, logging can only be turned off by updating 
-                        // the xml file. A workaround is to name the config xml file something 
-                        // else besides TracingConfig.xml and use Tracing.ReadTraceConfig(xml file) 
-                        // to read the file, but this does not work. Another workaround is to read 
-                        // in the xml file manually, and call Tracing.ReadTraceConfig(xml string) 
-                        // which works.
-                        XElement xml = XElement.Load("SmoothStreamingTracingConfig.xml");
-                        Tracing.ReadTraceConfig(xml.ToString());
-                    }
-                }
-            }
-            catch
-            {
-                // can get errors if the config xml file does not exist,
-                // or parsing the xml, ignore any errors and continue
-            }
-        }
+        //private void CheckToEnableLogging()
+        //{
+        //    //try
+        //    //{
+        //    //    // allow SSME tracing if specify on url command line
+        //    //    if (!DesignerProperties.GetIsInDesignMode(this) && HtmlPage.Document.QueryString.ContainsKey("log"))
+        //    //    {
+        //    //        // make sure did not specify to not log
+        //    //        string value = HtmlPage.Document.QueryString["log"].ToLower(CultureInfo.InvariantCulture);
+        //    //        if (value != "0" && value != "false")
+        //    //        {
+        //    //            // There are some issues around enabling tracing. If a TracingConfig.xml 
+        //    //            // file is in the application, logging can only be turned off by updating 
+        //    //            // the xml file. A workaround is to name the config xml file something 
+        //    //            // else besides TracingConfig.xml and use Tracing.ReadTraceConfig(xml file) 
+        //    //            // to read the file, but this does not work. Another workaround is to read 
+        //    //            // in the xml file manually, and call Tracing.ReadTraceConfig(xml string) 
+        //    //            // which works.
+        //    //            XElement xml = XElement.Load("SmoothStreamingTracingConfig.xml");
+        //    //            Tracing.ReadTraceConfig(xml.ToString());
+        //    //        }
+        //    //    }
+        //    //}
+        //    //catch
+        //    //{
+        //    //    // can get errors if the config xml file does not exist,
+        //    //    // or parsing the xml, ignore any errors and continue
+        //    //}
+        //}
     }
 }
