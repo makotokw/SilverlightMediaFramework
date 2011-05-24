@@ -1,0 +1,55 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 10.00
+# Visual Studio 2008
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Microsoft.SilverlightMediaFramework", "Microsoft.SilverlightMediaFramework\Microsoft.SilverlightMediaFramework.csproj", "{37BDB8B1-D3B8-4729-B638-1A3D3E42A563}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Lib", "Lib", "{21727F7F-6AB1-4980-8165-162100A3DC4C}"
+	ProjectSection(SolutionItems) = preProject
+		Lib\Microsoft.Web.Media.SmoothStreaming.dll = Lib\Microsoft.Web.Media.SmoothStreaming.dll
+	EndProjectSection
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Microsoft.SilverlightMediaFramework.Data", "Microsoft.SilverlightMediaFramework.Data\Microsoft.SilverlightMediaFramework.Data.csproj", "{EDE2C6A9-6E7D-467C-9D52-35A46C88B95C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Microsoft.SilverlightMediaFramework.Logging", "Microsoft.SilverlightMediaFramework.Logging\Microsoft.SilverlightMediaFramework.Logging.csproj", "{4B618BC1-A572-4981-B412-989FFFF84120}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Microsoft.SilverlightMediaFramework.Player", "Microsoft.SilverlightMediaFramework.Player\Microsoft.SilverlightMediaFramework.Player.csproj", "{B417C9DA-5F45-4544-AEA1-5EB0F89209D2}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Microsoft.SilverlightMediaFramework.Test", "Microsoft.SilverlightMediaFramework.Test\Microsoft.SilverlightMediaFramework.Test.csproj", "{C9A358C7-B612-477B-8C1C-6189AE4C2C28}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Microsoft.SilverlightMediaFramework.Test.Web", "Microsoft.SilverlightMediaFramework.Test.Web\Microsoft.SilverlightMediaFramework.Test.Web.csproj", "{CD9C5ED1-E07C-420C-9FFB-BB8F981FB03D}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{37BDB8B1-D3B8-4729-B638-1A3D3E42A563}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{37BDB8B1-D3B8-4729-B638-1A3D3E42A563}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{37BDB8B1-D3B8-4729-B638-1A3D3E42A563}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{37BDB8B1-D3B8-4729-B638-1A3D3E42A563}.Release|Any CPU.Build.0 = Release|Any CPU
+		{EDE2C6A9-6E7D-467C-9D52-35A46C88B95C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EDE2C6A9-6E7D-467C-9D52-35A46C88B95C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EDE2C6A9-6E7D-467C-9D52-35A46C88B95C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EDE2C6A9-6E7D-467C-9D52-35A46C88B95C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4B618BC1-A572-4981-B412-989FFFF84120}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4B618BC1-A572-4981-B412-989FFFF84120}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4B618BC1-A572-4981-B412-989FFFF84120}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4B618BC1-A572-4981-B412-989FFFF84120}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B417C9DA-5F45-4544-AEA1-5EB0F89209D2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B417C9DA-5F45-4544-AEA1-5EB0F89209D2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B417C9DA-5F45-4544-AEA1-5EB0F89209D2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B417C9DA-5F45-4544-AEA1-5EB0F89209D2}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C9A358C7-B612-477B-8C1C-6189AE4C2C28}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C9A358C7-B612-477B-8C1C-6189AE4C2C28}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C9A358C7-B612-477B-8C1C-6189AE4C2C28}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C9A358C7-B612-477B-8C1C-6189AE4C2C28}.Release|Any CPU.Build.0 = Release|Any CPU
+		{CD9C5ED1-E07C-420C-9FFB-BB8F981FB03D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{CD9C5ED1-E07C-420C-9FFB-BB8F981FB03D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{CD9C5ED1-E07C-420C-9FFB-BB8F981FB03D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{CD9C5ED1-E07C-420C-9FFB-BB8F981FB03D}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
