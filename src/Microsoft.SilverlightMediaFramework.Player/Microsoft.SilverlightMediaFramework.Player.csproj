@@ -81,6 +81,9 @@
     <Reference Include="System.Xml.Linq, Version=2.0.5.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="..\Microsoft.SilverlightMediaFramework\Properties\AssemblyVersionInfo.cs">
+      <Link>Properties\AssemblyVersionInfo.cs</Link>
+    </Compile>
     <Compile Include="Bitrate.cs" />
     <Compile Include="ControlHelper.cs" />
     <None Include="CoreSmoothStreamingMediaElement.org.cs" />
