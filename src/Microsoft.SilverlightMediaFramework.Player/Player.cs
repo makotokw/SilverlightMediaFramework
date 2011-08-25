@@ -1852,6 +1852,8 @@ namespace Microsoft.SilverlightMediaFramework.Player
         protected void EnableControls(bool enabled)
         {
             ControlHelper.EnableControl(playElement, enabled);
+            ControlHelper.EnableControl(fastForwardElement, enabled);
+            ControlHelper.EnableControl(rewindElement, enabled);
             ControlHelper.EnableControl(positionElement, enabled);
         }
 
