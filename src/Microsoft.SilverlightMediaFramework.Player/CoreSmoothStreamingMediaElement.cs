@@ -557,7 +557,8 @@ namespace Microsoft.SilverlightMediaFramework.Player
 
         private void OnSourceChanged()
         {
-            if (Source != null)
+            // Should set null to reset
+            //if (Source != null)
             {
                 // clear flag, set in the Play method
                 pendingPlay = false;
